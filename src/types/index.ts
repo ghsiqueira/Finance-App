@@ -180,6 +180,7 @@ export interface ApiResponse<T> {
 }
 
 export interface PaginatedResponse<T> {
+  message: string;
   success: boolean;
   data: {
     items: T[];
