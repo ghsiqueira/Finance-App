@@ -1,34 +1,29 @@
-// src/services/storage/index.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authStorage } from './auth';
 import { offlineStorage } from './offline';
 import { transactionStorage } from './transactions';
 
 export interface StorageService {
-  // Métodos básicos
   setItem<T>(key: string, value: T): Promise<void>;
   getItem<T>(key: string): Promise<T | null>;
   removeItem(key: string): Promise<void>;
   clear(): Promise<void>;
   getAllKeys(): Promise<readonly string[]>;
   
-  // Métodos utilitários
   multiGet(keys: string[]): Promise<Record<string, any>>;
   multiSet(keyValuePairs: Array<[string, any]>): Promise<void>;
   multiRemove(keys: string[]): Promise<void>;
   
-  // Cache
   clearCache(): Promise<void>;
   getCacheSize(): Promise<number>;
   
-  // Verificações
   hasItem(key: string): Promise<boolean>;
   getStorageInfo(): Promise<StorageInfo>;
 }
 
 export interface StorageInfo {
   totalKeys: number;
-  usedSpace: number; // Estimado
+  usedSpace: number; 
   authData: boolean;
   offlineData: boolean;
   cacheData: boolean;
@@ -38,9 +33,8 @@ export interface StorageInfo {
 class StorageManager implements StorageService {
   private readonly CACHE_PREFIX = 'cache_';
   private readonly CLEANUP_KEY = 'last_cleanup';
-  private readonly MAX_CACHE_AGE = 7 * 24 * 60 * 60 * 1000; // 7 dias
+  private readonly MAX_CACHE_AGE = 7 * 24 * 60 * 60 * 1000; 
 
-  // Métodos básicos
   async setItem<T>(key: string, value: T): Promise<void> {
     try {
       const serializedValue = JSON.stringify({
@@ -61,7 +55,6 @@ class StorageManager implements StorageService {
 
       const parsed = JSON.parse(value);
       
-      // Se tem timestamp, verificar se não expirou (para cache)
       if (parsed.timestamp && key.startsWith(this.CACHE_PREFIX)) {
         const age = Date.now() - parsed.timestamp;
         if (age > this.MAX_CACHE_AGE) {
@@ -70,7 +63,7 @@ class StorageManager implements StorageService {
         }
       }
 
-      return parsed.data || parsed; // Compatibilidade com dados antigos
+      return parsed.data || parsed; 
     } catch (error) {
       console.error(`Erro ao recuperar ${key}:`, error);
       return null;
@@ -105,7 +98,6 @@ class StorageManager implements StorageService {
     }
   }
 
-  // Métodos utilitários
   async multiGet(keys: string[]): Promise<Record<string, any>> {
     try {
       const pairs = await AsyncStorage.multiGet(keys);
@@ -154,7 +146,6 @@ class StorageManager implements StorageService {
     }
   }
 
-  // Cache
   async clearCache(): Promise<void> {
     try {
       const keys = await this.getAllKeys();
@@ -180,7 +171,6 @@ class StorageManager implements StorageService {
     }
   }
 
-  // Verificações
   async hasItem(key: string): Promise<boolean> {
     try {
       const value = await AsyncStorage.getItem(key);
@@ -195,9 +185,8 @@ class StorageManager implements StorageService {
       const keys = await this.getAllKeys();
       const keysArray = Array.from(keys);
       
-      // Calcular uso estimado
       let estimatedSize = 0;
-      const sampleKeys = keysArray.slice(0, 10); // Amostra para estimar
+      const sampleKeys = keysArray.slice(0, 10); 
       
       for (const key of sampleKeys) {
         const value = await AsyncStorage.getItem(key);
@@ -229,7 +218,6 @@ class StorageManager implements StorageService {
     }
   }
 
-  // Cache com TTL
   async setCacheItem<T>(key: string, value: T, ttl?: number): Promise<void> {
     try {
       const cacheKey = `${this.CACHE_PREFIX}${key}`;
@@ -267,7 +255,6 @@ class StorageManager implements StorageService {
     }
   }
 
-  // Limpeza automática
   async performMaintenanceCleanup(): Promise<void> {
     try {
       console.log('🧹 Iniciando limpeza de manutenção...');
@@ -278,7 +265,6 @@ class StorageManager implements StorageService {
 
       for (const key of keys) {
         try {
-          // Limpar cache expirado
           if (key.startsWith(this.CACHE_PREFIX)) {
             const value = await AsyncStorage.getItem(key);
             if (value) {
@@ -303,13 +289,11 @@ class StorageManager implements StorageService {
     }
   }
 
-  // Backup e restore
   async createBackup(): Promise<Record<string, any>> {
     try {
       const keys = await this.getAllKeys();
       const backup: Record<string, any> = {};
       
-      // Não incluir cache no backup
       const keysToBackup = Array.from(keys).filter(key => 
         !key.startsWith(this.CACHE_PREFIX)
       );
@@ -344,10 +328,8 @@ class StorageManager implements StorageService {
   }
 }
 
-// Instância singleton
 export const storageManager = new StorageManager();
 
-// Exportar todos os serviços de storage
 export {
   authStorage,
   offlineStorage,
@@ -355,20 +337,16 @@ export {
   storageManager as storage,
 };
 
-// Inicializar limpeza automática
 const initializeStorageMaintenance = () => {
-  // Executar limpeza a cada 24 horas
   setInterval(() => {
     storageManager.performMaintenanceCleanup();
   }, 24 * 60 * 60 * 1000);
 
-  // Executar uma limpeza inicial após 1 minuto
   setTimeout(() => {
     storageManager.performMaintenanceCleanup();
   }, 60 * 1000);
 };
 
-// Inicializar se estiver em ambiente de produção
 if (!__DEV__) {
   initializeStorageMaintenance();
 }

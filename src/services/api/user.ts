@@ -1,4 +1,3 @@
-// src/services/api/user.ts
 import { apiClient } from './client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ApiResponse, User, DashboardData } from '../../types';
@@ -57,51 +56,42 @@ export interface ExportData {
 }
 
 export const userService = {
-  // Buscar perfil do usuário
   async getProfile(): Promise<ApiResponse<{ user: User }>> {
     return apiClient.get('/user/profile');
   },
 
-  // Atualizar perfil
   async updateProfile(data: UpdateProfileData): Promise<ApiResponse<{ user: User }>> {
     return apiClient.put('/user/profile', data);
   },
 
-  // Atualizar preferências
   async updatePreferences(data: UpdatePreferencesData): Promise<ApiResponse<{
     preferences: User['preferences'];
   }>> {
     return apiClient.put('/user/preferences', data);
   },
 
-  // Alterar senha
   async changePassword(data: ChangePasswordData): Promise<ApiResponse<null>> {
     return apiClient.post('/user/change-password', data);
   },
 
-  // Buscar dashboard
   async getDashboard(period: string = 'month'): Promise<ApiResponse<DashboardData>> {
     return apiClient.get(`/user/dashboard?period=${period}`);
   },
 
-  // Buscar estatísticas do usuário
   async getStats(): Promise<ApiResponse<UserStats>> {
     return apiClient.get('/user/stats');
   },
 
-  // Deletar conta
   async deleteAccount(confirmPassword: string): Promise<ApiResponse<null>> {
     return apiClient.delete('/user/account', {
       data: { confirmPassword }
     });
   },
 
-  // Exportar dados
   async exportData(options: ExportData = {}): Promise<ApiResponse<any>> {
     return apiClient.post('/user/export', options);
   },
 
-  // Upload de avatar
   async uploadAvatar(formData: FormData): Promise<ApiResponse<{ avatarUrl: string }>> {
     return apiClient.post('/user/avatar', formData, {
       headers: {
@@ -110,12 +100,10 @@ export const userService = {
     });
   },
 
-  // Remover avatar
   async removeAvatar(): Promise<ApiResponse<null>> {
     return apiClient.delete('/user/avatar');
   },
 
-  // Buscar dashboard offline-first
   async getDashboardOfflineFirst(period: string = 'month'): Promise<DashboardData | null> {
     const cacheKey = `dashboard_${period}`;
     
@@ -133,16 +121,13 @@ export const userService = {
     }
   },
 
-  // Sincronizar dados do usuário
   async syncUserData(): Promise<boolean> {
     try {
-      // Tentar buscar dados mais recentes
       const [profileResponse, dashboardResponse] = await Promise.allSettled([
         this.getProfile(),
         this.getDashboard(),
       ]);
 
-      // Verificar se pelo menos uma requisição foi bem-sucedida
       const hasSuccess = [profileResponse, dashboardResponse].some(
         result => result.status === 'fulfilled' && result.value.success
       );
@@ -154,7 +139,6 @@ export const userService = {
     }
   },
 
-  // Verificar se precisa atualizar cache
   async shouldUpdateCache(cacheKey: string, maxAge: number = 5 * 60 * 1000): Promise<boolean> {
     try {
       const cacheTimestamp = await AsyncStorage.getItem(`${cacheKey}_timestamp`);
@@ -170,7 +154,6 @@ export const userService = {
     }
   },
 
-  // Limpar cache do usuário
   async clearUserCache(): Promise<void> {
     try {
       const keys = await AsyncStorage.getAllKeys();

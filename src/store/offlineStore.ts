@@ -1,4 +1,3 @@
-// src/store/offlineStore.ts
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
@@ -20,16 +19,13 @@ interface OfflineStore {
   offlineBudgets: Budget[];
   offlineGoals: Goal[];
   
-  // Network status
   setOnlineStatus: (status: boolean) => void;
   
-  // Pending requests
   addPendingRequest: (request: Omit<PendingRequest, 'id' | 'timestamp'>) => Promise<void>;
   getPendingRequests: () => Promise<PendingRequest[]>;
   clearPendingRequests: () => Promise<void>;
   removePendingRequest: (id: string) => Promise<void>;
   
-  // Offline data
   saveOfflineTransaction: (transaction: Transaction) => Promise<void>;
   getOfflineTransactions: () => Promise<Transaction[]>;
   removeOfflineTransaction: (id: string) => Promise<void>;
@@ -43,10 +39,8 @@ interface OfflineStore {
   getOfflineGoals: () => Promise<Goal[]>;
   removeOfflineGoal: (id: string) => Promise<void>;
   
-  // Initialization
   initializeOfflineData: () => Promise<void>;
   
-  // Sync
   syncAllData: () => Promise<void>;
 }
 
@@ -60,7 +54,6 @@ export const useOfflineStore = create<OfflineStore>((set, get) => ({
   setOnlineStatus: (status) => {
     set({ isOnline: status });
     
-    // Se voltou online, tentar sincronizar
     if (status) {
       get().syncAllData();
     }
@@ -242,13 +235,10 @@ export const useOfflineStore = create<OfflineStore>((set, get) => ({
         offlineGoals,
       });
 
-      // Configurar listener de rede
       const unsubscribe = NetInfo.addEventListener(state => {
         get().setOnlineStatus(state.isConnected ?? false);
       });
 
-      // Retorna função para limpar o listener se necessário
-      // mas não retorna nada para o tipo Promise<void>
     } catch (error) {
       console.error('Erro ao inicializar dados offline:', error);
     }
@@ -263,14 +253,11 @@ export const useOfflineStore = create<OfflineStore>((set, get) => ({
     try {
       console.log('Iniciando sincronização...');
       
-      // Sincronizar requests pendentes
       const pendingRequests = await get().getPendingRequests();
       
       for (const request of pendingRequests) {
         try {
-          // Aqui você faria o request real para a API
           console.log('Sincronizando request:', request);
-          // await apiClient.request(request);
           await get().removePendingRequest(request.id);
         } catch (error) {
           console.error('Erro ao sincronizar request:', error);

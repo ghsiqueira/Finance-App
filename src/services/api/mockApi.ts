@@ -1,7 +1,5 @@
-// src/services/api/mockApi.ts
 import { ApiResponse, Budget, Goal } from '../../types';
 
-// Interface local para garantir compatibilidade
 interface MockUser {
   _id: string;
   name: string;
@@ -43,7 +41,6 @@ interface MockTransaction {
   updatedAt: string;
 }
 
-// Dados mockados para desenvolvimento
 const mockUser: MockUser = {
   _id: 'mock-user-id',
   name: 'Gabriel Silva',
@@ -98,11 +95,9 @@ let mockTransactions: MockTransaction[] = [];
 let mockBudgets: any[] = [];
 let mockGoals: any[] = [];
 
-// Delay para simular requisições reais
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const mockApiService = {
-  // Auth
   async login(credentials: { email: string; password: string }): Promise<ApiResponse<any>> {
     await delay(1000);
     
@@ -155,7 +150,6 @@ export const mockApiService = {
     };
   },
 
-  // Transactions
   async getTransactions(params: any = {}): Promise<ApiResponse<any>> {
     await delay(800);
     
@@ -202,7 +196,6 @@ export const mockApiService = {
     };
   },
 
-  // Categories
   async getCategories(params: any = {}): Promise<ApiResponse<any>> {
     await delay(500);
     
@@ -221,7 +214,6 @@ export const mockApiService = {
     };
   },
 
-  // Dashboard
   async getDashboard(period: string = 'month'): Promise<ApiResponse<any>> {
     await delay(1000);
     
@@ -248,7 +240,6 @@ export const mockApiService = {
     };
   },
 
-  // Budgets
   async getBudgets(): Promise<ApiResponse<{ budgets: Budget[] }>> {
     await delay(600);
     
@@ -278,7 +269,6 @@ export const mockApiService = {
     };
   },
 
-  // Goals
   async getGoals(): Promise<ApiResponse<{ goals: Goal[] }>> {
     await delay(600);
     
@@ -308,7 +298,6 @@ export const mockApiService = {
     };
   },
 
-  // User stats
   async getStats(): Promise<ApiResponse<any>> {
     await delay(400);
     
@@ -327,7 +316,6 @@ export const mockApiService = {
   },
 };
 
-// Helper para verificar se deve usar mock
 export const shouldUseMock = () => {
-  return __DEV__ && false; // Desabilitado - use false para API real
+  return __DEV__ && false;
 };

@@ -1,4 +1,3 @@
-// src/components/forms/GoalForm.tsx
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
@@ -53,7 +52,6 @@ export default function GoalForm({
     setValue,
     formState: { errors, isValid },
   } = useForm<GoalFormData>({
-    // Força o tipo do resolver para evitar conflito de tipos
     resolver: yupResolver(goalSchema) as any,
     defaultValues: {
       title: initialData?.title || '',
@@ -66,7 +64,6 @@ export default function GoalForm({
     },
   });
 
-  // Buscar categorias
   const { data: categoriesResponse } = useQuery({
     queryKey: ['categories', 'both'],
     queryFn: () => categoryService.getCategories({ type: 'both' }),
@@ -76,7 +73,7 @@ export default function GoalForm({
 
   function getDefaultTargetDate(): Date {
     const date = new Date();
-    date.setMonth(date.getMonth() + 6); // 6 meses a partir de hoje
+    date.setMonth(date.getMonth() + 6); 
     return date;
   }
 
@@ -195,7 +192,6 @@ export default function GoalForm({
               <TouchableOpacity
                 style={[styles.dateInput, { borderColor: themeConfig.colors.border }]}
                 onPress={() => {
-                  // Aqui você pode implementar um DatePicker
                   Alert.alert('Info', 'DatePicker será implementado em breve');
                 }}
               >

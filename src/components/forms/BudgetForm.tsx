@@ -14,7 +14,6 @@ import { formatInputCurrency } from '../../utils/formatters';
 import type { BudgetForm as BudgetFormData, Category } from '../../types';
 import * as yup from 'yup';
 
-// Schema específico para este formulário
 const budgetFormSchema = yup.object({
   name: yup.string().required('Nome é obrigatório').max(50, 'Nome muito longo'),
   amount: yup.string().required('Valor é obrigatório'),
@@ -80,7 +79,6 @@ export default function BudgetForm({
     },
   });
 
-  // Buscar categorias de gastos
   const { data: categoriesResponse } = useQuery({
     queryKey: ['categories', 'expense'],
     queryFn: () => categoryService.getCategories({ type: 'expense' }),

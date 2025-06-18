@@ -1,4 +1,3 @@
-// src/components/common/Loading.tsx
 import React from 'react';
 import {
   View,

@@ -1,4 +1,3 @@
-// src/styles/theme.ts
 export const lightTheme = {
   dark: false,
   colors: {
@@ -19,11 +18,9 @@ export const lightTheme = {
     border: '#e5e7eb',
     notification: '#ef4444',
     
-    // Cores específicas para receitas e gastos
     income: '#10b981',
     expense: '#ef4444',
     
-    // Gradientes
     primaryGradient: ['#667eea', '#764ba2'] as const,
     incomeGradient: ['#10b981', '#059669'] as const,
     expenseGradient: ['#ef4444', '#dc2626'] as const,

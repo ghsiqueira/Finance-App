@@ -1,4 +1,3 @@
-// src/utils/formatters.ts
 export const formatCurrency = (
   value: number,
   currency: string = 'BRL',
@@ -53,7 +52,7 @@ export const formatDate = (
         month: 'long',
         day: 'numeric',
       });
-    default: // medium
+    default: 
       return dateObj.toLocaleDateString(locale, {
         year: 'numeric',
         month: 'short',
@@ -102,26 +101,20 @@ export const formatRelativeTime = (
 };
 
 export const parseNumber = (value: string): number => {
-  // Remove todos os caracteres que não são dígitos, vírgula ou ponto
   const cleanValue = value.replace(/[^\d,.-]/g, '');
   
-  // Substitui vírgula por ponto (formato brasileiro para americano)
   const normalizedValue = cleanValue.replace(',', '.');
   
   return parseFloat(normalizedValue) || 0;
 };
 
 export const formatInputCurrency = (value: string): string => {
-  // Remove caracteres não numéricos exceto vírgula e ponto
   let cleanValue = value.replace(/[^\d,]/g, '');
   
-  // Se está vazio, retorna vazio
   if (!cleanValue) return '';
   
-  // Converte para número
   const numericValue = parseFloat(cleanValue.replace(',', '.')) / 100;
   
-  // Formata como moeda brasileira
   return numericValue.toLocaleString('pt-BR', {
     style: 'currency',
     currency: 'BRL',

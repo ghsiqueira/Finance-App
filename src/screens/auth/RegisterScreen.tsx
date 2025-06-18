@@ -1,4 +1,3 @@
-// src/screens/auth/RegisterScreen.tsx - VERSÃO COMPLETA ATUALIZADA
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -51,10 +50,8 @@ export default function RegisterScreen({ navigation }: Props) {
     },
   });
 
-  // Watch password para validação em tempo real
   const password = watch('password');
 
-  // Testar conexão ao montar o componente
   useEffect(() => {
     const testConnection = async () => {
       try {
@@ -79,7 +76,6 @@ export default function RegisterScreen({ navigation }: Props) {
     testConnection();
   }, []);
 
-  // Easter egg para debug (5 taps no título)
   const handleTitlePress = () => {
     if (__DEV__) {
       setDebugTaps(prev => {
@@ -91,7 +87,6 @@ export default function RegisterScreen({ navigation }: Props) {
         return newCount;
       });
       
-      // Reset counter após 3 segundos
       setTimeout(() => setDebugTaps(0), 3000);
     }
   };
@@ -102,7 +97,6 @@ export default function RegisterScreen({ navigation }: Props) {
     setLastError(null);
     
     try {
-      // Validação adicional local
       if (data.password !== data.confirmPassword) {
         throw new Error('As senhas não conferem');
       }
@@ -118,7 +112,6 @@ export default function RegisterScreen({ navigation }: Props) {
         hasConfirmPassword: !!data.confirmPassword,
       });
 
-      // Testar conexão novamente antes de tentar registrar
       console.log('🔍 Testando conexão antes do registro...');
       const connectionTest = await authService.testConnection();
       

@@ -1,4 +1,3 @@
-// src/components/common/Card.tsx
 import React from 'react';
 import {
   View,
@@ -47,7 +46,7 @@ export default function Card({
         return { padding: themeConfig.spacing.sm };
       case 'large':
         return { padding: themeConfig.spacing.xl };
-      default: // medium
+      default: 
         return { padding: themeConfig.spacing.md };
     }
   };
@@ -60,7 +59,7 @@ export default function Card({
         return { margin: themeConfig.spacing.sm };
       case 'large':
         return { margin: themeConfig.spacing.xl };
-      default: // medium
+      default: 
         return { margin: themeConfig.spacing.md };
     }
   };
@@ -73,7 +72,7 @@ export default function Card({
         return { borderRadius: themeConfig.borderRadius.lg };
       case 'full':
         return { borderRadius: themeConfig.borderRadius.full };
-      default: // medium
+      default: 
         return { borderRadius: themeConfig.borderRadius.md };
     }
   };
@@ -108,7 +107,7 @@ export default function Card({
           ...baseStyle,
           backgroundColor: 'transparent',
         };
-      default: // default
+      default: 
         return {
           ...baseStyle,
           backgroundColor: themeConfig.colors.card,

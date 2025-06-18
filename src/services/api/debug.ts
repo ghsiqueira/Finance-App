@@ -1,6 +1,5 @@
 import React from 'react';
 
-// src/services/api/debug.ts
 export const debugApiCalls = {
   log: (message: string, data?: any) => {
     if (__DEV__) {
@@ -24,7 +23,6 @@ export const debugApiCalls = {
   }
 };
 
-// Função para testar conectividade com o backend
 export const testBackendConnection = async (): Promise<{
   success: boolean;
   message: string;
@@ -59,7 +57,6 @@ export const testBackendConnection = async (): Promise<{
   }
 };
 
-// Melhorias no client.ts
 export const improvedApiClient = {
   async request<T>(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE',
@@ -75,7 +72,6 @@ export const improvedApiClient = {
         'Content-Type': 'application/json',
       };
 
-      // Adicionar token se disponível
       const token = await import('@react-native-async-storage/async-storage')
         .then(({ default: AsyncStorage }) => AsyncStorage.getItem('token'))
         .catch(() => null);
@@ -110,7 +106,6 @@ export const improvedApiClient = {
   }
 };
 
-// Hook de debug para testes
 export const useDebugInfo = () => {
   const [debugInfo, setDebugInfo] = React.useState({
     backendStatus: 'checking',

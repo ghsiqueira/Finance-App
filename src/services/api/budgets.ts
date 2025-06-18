@@ -1,4 +1,3 @@
-// src/services/api/budgets.ts
 import { apiClient } from './client';
 import { ApiResponse, Budget, BudgetForm } from '../../types';
 
@@ -33,7 +32,6 @@ export interface BudgetAlert {
 }
 
 export const budgetService = {
-  // Listar orçamentos
   async getBudgets(filters: BudgetFilters = {}): Promise<ApiResponse<{ budgets: Budget[] }>> {
     const params = new URLSearchParams();
     
@@ -46,7 +44,6 @@ export const budgetService = {
     return apiClient.get(`/budgets?${params.toString()}`);
   },
 
-  // Buscar orçamento por ID
   async getBudget(id: string): Promise<ApiResponse<{
     budget: Budget;
     transactions: any[];
@@ -55,7 +52,6 @@ export const budgetService = {
     return apiClient.get(`/budgets/${id}`);
   },
 
-  // Criar orçamento
   async createBudget(data: BudgetForm): Promise<ApiResponse<{ budget: Budget }>> {
     const payload = {
       ...data,
@@ -67,7 +63,6 @@ export const budgetService = {
     return apiClient.post('/budgets', payload);
   },
 
-  // Atualizar orçamento
   async updateBudget(id: string, data: Partial<BudgetForm>): Promise<ApiResponse<{ budget: Budget }>> {
     const payload = {
       ...data,
@@ -79,32 +74,26 @@ export const budgetService = {
     return apiClient.put(`/budgets/${id}`, payload);
   },
 
-  // Deletar orçamento
   async deleteBudget(id: string): Promise<ApiResponse<null>> {
     return apiClient.delete(`/budgets/${id}`);
   },
 
-  // Ativar/desativar orçamento
   async toggleBudget(id: string): Promise<ApiResponse<{ budget: Budget }>> {
     return apiClient.post(`/budgets/${id}/toggle`);
   },
 
-  // Renovar orçamento
   async renewBudget(id: string): Promise<ApiResponse<{ budget: Budget }>> {
     return apiClient.post(`/budgets/${id}/renew`);
   },
 
-  // Obter resumo dos orçamentos
   async getBudgetSummary(): Promise<ApiResponse<BudgetSummary>> {
     return apiClient.get('/budgets/summary');
   },
 
-  // Obter alertas de orçamento
   async getBudgetAlerts(): Promise<ApiResponse<{ alerts: BudgetAlert[] }>> {
     return apiClient.get('/budgets/alerts');
   },
 
-  // Buscar orçamentos offline-first
   async getBudgetsOfflineFirst(filters: BudgetFilters = {}): Promise<Budget[]> {
     const cacheKey = `budgets_${JSON.stringify(filters)}`;
     
@@ -117,22 +106,18 @@ export const budgetService = {
     );
   },
 
-  // Buscar orçamentos ativos
   async getActiveBudgets(): Promise<ApiResponse<{ budgets: Budget[] }>> {
     return this.getBudgets({ status: 'active' });
   },
 
-  // Buscar orçamentos expirados
   async getExpiredBudgets(): Promise<ApiResponse<{ budgets: Budget[] }>> {
     return this.getBudgets({ status: 'expired' });
   },
 
-  // Buscar orçamentos por período
   async getBudgetsByPeriod(period: 'weekly' | 'monthly' | 'quarterly' | 'yearly'): Promise<ApiResponse<{ budgets: Budget[] }>> {
     return this.getBudgets({ period });
   },
 
-  // Verificar se categoria já tem orçamento ativo
   async hasBudgetForCategory(categoryId: string): Promise<boolean> {
     try {
       const response = await this.getActiveBudgets();
@@ -144,7 +129,6 @@ export const budgetService = {
     }
   },
 
-  // Calcular progresso do orçamento
   calculateBudgetProgress(budget: Budget): {
     percentage: number;
     remaining: number;
@@ -164,7 +148,6 @@ export const budgetService = {
     };
   },
 
-  // Duplicar orçamento
   async duplicateBudget(id: string): Promise<ApiResponse<{ budget: Budget }>> {
     const { data } = await this.getBudget(id);
     
@@ -174,7 +157,6 @@ export const budgetService = {
 
     const { _id, spent, alertSent, createdAt, updatedAt, ...budgetData } = data.budget;
     
-    // Criar novo período (próximo mês)
     const now = new Date();
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     const endOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0);
@@ -192,7 +174,6 @@ export const budgetService = {
     });
   },
 
-  // Obter estatísticas de performance
   async getBudgetPerformance(id: string): Promise<{
     averageDailySpending: number;
     projectedTotal: number;
@@ -227,7 +208,6 @@ export const budgetService = {
     };
   },
 
-  // Resetar alertas de orçamento
   async resetBudgetAlerts(id: string): Promise<ApiResponse<{ budget: Budget }>> {
     const response = await this.getBudget(id);
     

@@ -1,4 +1,3 @@
-// src/screens/main/GoalsScreen.tsx
 import React, { useState, useCallback } from 'react';
 import {
   View,
@@ -46,7 +45,7 @@ export default function GoalsScreen({ navigation }: Props) {
       status: filterType === 'all' ? undefined : filterType,
       includeCompleted: filterType === 'completed' || filterType === 'all'
     }),
-    staleTime: 1000 * 60 * 2, // 2 minutos
+    staleTime: 1000 * 60 * 2, 
   });
 
   const {
@@ -253,7 +252,6 @@ export default function GoalsScreen({ navigation }: Props) {
               title="Contribuir"
               size="small"
               onPress={() => {
-                // TODO: Implementar modal de contribuição
               }}
               style={styles.contributeButton}
             />
@@ -457,7 +455,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Summary Card
   summaryCard: {
     marginBottom: 16,
   },
@@ -509,7 +506,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Goal Card
   goalCard: {
     marginBottom: 12,
   },
@@ -634,7 +630,6 @@ const styles = StyleSheet.create({
     minWidth: 100,
   },
 
-  // Empty State
   emptyState: {
     alignItems: 'center',
     padding: 48,

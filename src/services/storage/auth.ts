@@ -1,4 +1,3 @@
-// src/services/storage/auth.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User } from '../../types';
 
@@ -30,7 +29,6 @@ class AuthStorage {
     AUTH_PREFERENCES: 'auth_preferences',
   } as const;
 
-  // Salvar dados de autenticação
   async saveAuthData(authData: StoredAuthData): Promise<void> {
     try {
       const dataToStore = {
@@ -52,7 +50,6 @@ class AuthStorage {
     }
   }
 
-  // Recuperar dados de autenticação
   async getAuthData(): Promise<StoredAuthData | null> {
     try {
       const authDataString = await AsyncStorage.getItem(this.KEYS.AUTH_DATA);
@@ -63,7 +60,6 @@ class AuthStorage {
 
       const authData: StoredAuthData = JSON.parse(authDataString);
       
-      // Verificar se não expirou
       if (authData.expiresAt && Date.now() > authData.expiresAt) {
         console.log('🔐 Token expirado, removendo dados');
         await this.clearAuthData();
@@ -77,7 +73,6 @@ class AuthStorage {
     }
   }
 
-  // Obter apenas o token
   async getToken(): Promise<string | null> {
     try {
       return await AsyncStorage.getItem(this.KEYS.TOKEN);
@@ -87,7 +82,6 @@ class AuthStorage {
     }
   }
 
-  // Obter refresh token
   async getRefreshToken(): Promise<string | null> {
     try {
       return await AsyncStorage.getItem(this.KEYS.REFRESH_TOKEN);
@@ -97,7 +91,6 @@ class AuthStorage {
     }
   }
 
-  // Obter perfil do usuário
   async getUserProfile(): Promise<User | null> {
     try {
       const userString = await AsyncStorage.getItem(this.KEYS.USER_PROFILE);
@@ -108,7 +101,6 @@ class AuthStorage {
     }
   }
 
-  // Atualizar perfil do usuário
   async updateUserProfile(user: Partial<User>): Promise<void> {
     try {
       const currentUser = await this.getUserProfile();
@@ -116,7 +108,6 @@ class AuthStorage {
         const updatedUser = { ...currentUser, ...user };
         await AsyncStorage.setItem(this.KEYS.USER_PROFILE, JSON.stringify(updatedUser));
         
-        // Atualizar também nos dados de auth
         const authData = await this.getAuthData();
         if (authData) {
           authData.user = updatedUser as User;
@@ -129,7 +120,6 @@ class AuthStorage {
     }
   }
 
-  // Limpar todos os dados de autenticação
   async clearAuthData(): Promise<void> {
     try {
       await AsyncStorage.multiRemove([
@@ -146,7 +136,6 @@ class AuthStorage {
     }
   }
 
-  // Verificar se usuário está logado
   async isLoggedIn(): Promise<boolean> {
     try {
       const authData = await this.getAuthData();
@@ -156,13 +145,11 @@ class AuthStorage {
     }
   }
 
-  // Salvar sessão de login
   async saveLoginSession(session: LoginSession): Promise<void> {
     try {
       const sessions = await this.getLoginSessions();
       sessions.push(session);
       
-      // Manter apenas as últimas 5 sessões
       const recentSessions = sessions.slice(-5);
       
       await AsyncStorage.setItem(this.KEYS.LOGIN_SESSIONS, JSON.stringify(recentSessions));
@@ -171,7 +158,6 @@ class AuthStorage {
     }
   }
 
-  // Obter sessões de login
   async getLoginSessions(): Promise<LoginSession[]> {
     try {
       const sessionsString = await AsyncStorage.getItem(this.KEYS.LOGIN_SESSIONS);
@@ -182,7 +168,6 @@ class AuthStorage {
     }
   }
 
-  // Invalidar sessão atual
   async invalidateCurrentSession(deviceId: string): Promise<void> {
     try {
       const sessions = await this.getLoginSessions();
@@ -198,7 +183,6 @@ class AuthStorage {
     }
   }
 
-  // Configurar biometria
   async setBiometricEnabled(enabled: boolean): Promise<void> {
     try {
       await AsyncStorage.setItem(this.KEYS.BIOMETRIC_ENABLED, JSON.stringify(enabled));
@@ -207,7 +191,6 @@ class AuthStorage {
     }
   }
 
-  // Verificar se biometria está habilitada
   async isBiometricEnabled(): Promise<boolean> {
     try {
       const enabledString = await AsyncStorage.getItem(this.KEYS.BIOMETRIC_ENABLED);
@@ -217,7 +200,6 @@ class AuthStorage {
     }
   }
 
-  // Salvar último email usado
   async saveLastLoginEmail(email: string): Promise<void> {
     try {
       await AsyncStorage.setItem(this.KEYS.LAST_LOGIN_EMAIL, email);
@@ -226,7 +208,6 @@ class AuthStorage {
     }
   }
 
-  // Obter último email usado
   async getLastLoginEmail(): Promise<string | null> {
     try {
       return await AsyncStorage.getItem(this.KEYS.LAST_LOGIN_EMAIL);
@@ -235,7 +216,6 @@ class AuthStorage {
     }
   }
 
-  // Configurar lembrar email
   async setRememberEmail(remember: boolean): Promise<void> {
     try {
       await AsyncStorage.setItem(this.KEYS.REMEMBER_EMAIL, JSON.stringify(remember));
@@ -244,7 +224,6 @@ class AuthStorage {
     }
   }
 
-  // Verificar se deve lembrar email
   async shouldRememberEmail(): Promise<boolean> {
     try {
       const rememberString = await AsyncStorage.getItem(this.KEYS.REMEMBER_EMAIL);
@@ -254,7 +233,6 @@ class AuthStorage {
     }
   }
 
-  // Salvar preferências de autenticação
   async saveAuthPreferences(preferences: {
     autoLogin?: boolean;
     rememberMe?: boolean;
@@ -268,7 +246,6 @@ class AuthStorage {
     }
   }
 
-  // Obter preferências de autenticação
   async getAuthPreferences(): Promise<any> {
     try {
       const preferencesString = await AsyncStorage.getItem(this.KEYS.AUTH_PREFERENCES);
@@ -276,7 +253,7 @@ class AuthStorage {
         autoLogin: false,
         rememberMe: true,
         biometricLogin: false,
-        sessionTimeout: 30 * 24 * 60 * 60 * 1000, // 30 dias
+        sessionTimeout: 30 * 24 * 60 * 60 * 1000, 
       };
     } catch (error) {
       return {
@@ -288,13 +265,11 @@ class AuthStorage {
     }
   }
 
-  // Verificar se token precisa ser renovado
   async shouldRefreshToken(): Promise<boolean> {
     try {
       const authData = await this.getAuthData();
       if (!authData) return false;
 
-      // Renovar se faltam menos de 5 minutos para expirar
       const fiveMinutes = 5 * 60 * 1000;
       return Date.now() > (authData.expiresAt - fiveMinutes);
     } catch (error) {
@@ -302,7 +277,6 @@ class AuthStorage {
     }
   }
 
-  // Atualizar token
   async updateToken(token: string, expiresAt: number, refreshToken?: string): Promise<void> {
     try {
       const authData = await this.getAuthData();
@@ -325,7 +299,6 @@ class AuthStorage {
     }
   }
 
-  // Obter informações de debug
   async getAuthDebugInfo(): Promise<any> {
     try {
       const authData = await this.getAuthData();
@@ -355,6 +328,5 @@ class AuthStorage {
   }
 }
 
-// Instância singleton
 export const authStorage = new AuthStorage();
 export default authStorage;

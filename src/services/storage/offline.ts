@@ -1,4 +1,3 @@
-// src/services/storage/offline.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transaction, Budget, Goal } from '../../types';
 
@@ -38,7 +37,6 @@ class OfflineStorage {
   private readonly MAX_QUEUE_SIZE = 100;
   private readonly MAX_RETRY_COUNT = 3;
 
-  // Requisições offline
   async addOfflineRequest(request: Omit<OfflineRequest, 'id' | 'timestamp' | 'retryCount'>): Promise<void> {
     try {
       const newRequest: OfflineRequest = {
@@ -52,7 +50,6 @@ class OfflineStorage {
       const requests = await this.getOfflineRequests();
       requests.push(newRequest);
 
-      // Limitar tamanho da fila
       if (requests.length > this.MAX_QUEUE_SIZE) {
         requests.splice(0, requests.length - this.MAX_QUEUE_SIZE);
       }
@@ -105,7 +102,6 @@ class OfflineStorage {
     }
   }
 
-  // Transações offline
   async saveOfflineTransaction(transaction: Transaction): Promise<void> {
     try {
       const transactions = await this.getOfflineTransactions();
@@ -118,7 +114,6 @@ class OfflineStorage {
         lastModified: Date.now(),
       };
 
-      // Verificar se já existe e atualizar
       const existingIndex = transactions.findIndex(t => t.id === transaction._id);
       if (existingIndex >= 0) {
         transactions[existingIndex] = offlineData;
@@ -165,7 +160,6 @@ class OfflineStorage {
     }
   }
 
-  // Orçamentos offline
   async saveOfflineBudget(budget: Budget): Promise<void> {
     try {
       const budgets = await this.getOfflineBudgets();
@@ -212,7 +206,6 @@ class OfflineStorage {
     }
   }
 
-  // Metas offline
   async saveOfflineGoal(goal: Goal): Promise<void> {
     try {
       const goals = await this.getOfflineGoals();
@@ -259,7 +252,6 @@ class OfflineStorage {
     }
   }
 
-  // Métodos genéricos
   async getAllOfflineData(): Promise<{
     requests: OfflineRequest[];
     transactions: OfflineData<Transaction>[];
@@ -310,7 +302,6 @@ class OfflineStorage {
     }
   }
 
-  // Metadata e estatísticas
   async getOfflineMetadata(): Promise<{
     totalRequests: number;
     totalTransactions: number;
@@ -334,7 +325,6 @@ class OfflineStorage {
         ...goals.filter(g => !g.synced),
       ].length;
 
-      // Estimar tamanho do storage offline
       const estimatedSize = JSON.stringify({
         requests,
         transactions,
@@ -375,7 +365,6 @@ class OfflineStorage {
     }
   }
 
-  // Queue de sincronização prioritária
   async addToSyncQueue(item: {
     type: 'transaction' | 'budget' | 'goal';
     id: string;
@@ -393,16 +382,15 @@ class OfflineStorage {
 
       queue.push(syncItem);
       
-      // Ordenar por prioridade e timestamp
       queue.sort((a, b) => {
         const priorityOrder: { [key: string]: number } = { high: 3, medium: 2, low: 1 };
         const aPriority = priorityOrder[a.priority as keyof typeof priorityOrder];
         const bPriority = priorityOrder[b.priority as keyof typeof priorityOrder];
         
         if (aPriority !== bPriority) {
-            return bPriority - aPriority; // Prioridade maior primeiro
+            return bPriority - aPriority; 
         }
-        return a.timestamp - b.timestamp; // Mais antigo primeiro
+        return a.timestamp - b.timestamp; 
       });
       await AsyncStorage.setItem(this.KEYS.SYNC_QUEUE, JSON.stringify(queue));
     } catch (error) {
@@ -439,7 +427,6 @@ class OfflineStorage {
     }
   }
 
-  // Backup e restore offline
   async createOfflineBackup(): Promise<any> {
     try {
       const allData = await this.getAllOfflineData();
@@ -479,13 +466,11 @@ class OfflineStorage {
     }
   }
 
-  // Limpeza de dados antigos
   async cleanupOldData(maxAge: number = 30 * 24 * 60 * 60 * 1000): Promise<void> {
     try {
       const now = Date.now();
       let cleanedCount = 0;
 
-      // Limpar requisições antigas
       const requests = await this.getOfflineRequests();
       const activeRequests = requests.filter(req => (now - req.timestamp) < maxAge);
       if (activeRequests.length !== requests.length) {
@@ -493,7 +478,6 @@ class OfflineStorage {
         cleanedCount += requests.length - activeRequests.length;
       }
 
-      // Limpar dados sincronizados antigos
       const transactions = await this.getOfflineTransactions();
       const activeTransactions = transactions.filter(t => 
         !t.synced || (now - t.lastModified) < maxAge
@@ -512,6 +496,5 @@ class OfflineStorage {
   }
 }
 
-// Instância singleton
 export const offlineStorage = new OfflineStorage();
 export default offlineStorage;

@@ -10,7 +10,6 @@ export const StorageKeys = {
 } as const;
 
 export const storage = {
-  // Salvar dados
   async setItem<T>(key: string, value: T): Promise<void> {
     try {
       const serializedValue = JSON.stringify(value);
@@ -21,7 +20,6 @@ export const storage = {
     }
   },
 
-  // Buscar dados
   async getItem<T>(key: string): Promise<T | null> {
     try {
       const value = await AsyncStorage.getItem(key);
@@ -32,7 +30,6 @@ export const storage = {
     }
   },
 
-  // Remover item
   async removeItem(key: string): Promise<void> {
     try {
       await AsyncStorage.removeItem(key);
@@ -42,7 +39,6 @@ export const storage = {
     }
   },
 
-  // Limpar tudo
   async clear(): Promise<void> {
     try {
       await AsyncStorage.clear();
@@ -52,7 +48,6 @@ export const storage = {
     }
   },
 
-  // Buscar múltiplos itens
   async multiGet(keys: string[]): Promise<Record<string, any>> {
     try {
       const pairs = await AsyncStorage.multiGet(keys);
@@ -75,7 +70,6 @@ export const storage = {
     }
   },
 
-  // Salvar múltiplos itens
   async multiSet(keyValuePairs: Array<[string, any]>): Promise<void> {
     try {
       const serializedPairs = keyValuePairs.map(([key, value]) => [
@@ -89,7 +83,6 @@ export const storage = {
     }
   },
 
-  // Obter todas as chaves
   async getAllKeys(): Promise<readonly string[]> {
     try {
       return await AsyncStorage.getAllKeys();
@@ -99,7 +92,6 @@ export const storage = {
     }
   },
 
-  // Limpar cache com prefixo
   async clearCache(): Promise<void> {
     try {
       const keys = await this.getAllKeys();
@@ -113,7 +105,6 @@ export const storage = {
     }
   },
 
-  // Verificar se uma chave existe
   async hasItem(key: string): Promise<boolean> {
     try {
       const value = await AsyncStorage.getItem(key);

@@ -1,4 +1,3 @@
-// src/components/forms/TransactionForm.tsx
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
@@ -53,19 +52,18 @@ export default function TransactionForm({
     formState: { errors, isValid },
     reset,
   } = useForm<TransactionFormData>({
-    resolver: yupResolver(transactionSchema) as any, // Type assertion to resolve the resolver type mismatch
+    resolver: yupResolver(transactionSchema) as any,
     defaultValues: {
       description: initialData?.description || '',
       amount: initialData?.amount || '',
       type: initialData?.type || defaultType,
-      categoryId: initialData?.categoryId || undefined, // Changed from '' to undefined
+      categoryId: initialData?.categoryId || undefined,
       date: initialData?.date || new Date(),
-      notes: initialData?.notes || undefined, // Changed from '' to undefined
+      notes: initialData?.notes || undefined, 
       paymentMethod: initialData?.paymentMethod || 'cash',
     },
   });
 
-  // Buscar categorias
   const { data: categoriesResponse } = useQuery({
     queryKey: ['categories', selectedType],
     queryFn: () => categoryService.getCategories({ type: selectedType }),
@@ -76,11 +74,11 @@ export default function TransactionForm({
   useEffect(() => {
     setValue('type', selectedType);
     setSelectedCategory('');
-    setValue('categoryId', undefined); // Changed from '' to undefined
+    setValue('categoryId', undefined); 
   }, [selectedType, setValue]);
 
   useEffect(() => {
-    setValue('categoryId', selectedCategory || undefined); // Handle empty string case
+    setValue('categoryId', selectedCategory || undefined); 
   }, [selectedCategory, setValue]);
 
   useEffect(() => {
@@ -302,7 +300,7 @@ export default function TransactionForm({
               <Input
                 label="Observações (Opcional)"
                 placeholder="Informações adicionais..."
-                value={value || ''} // Handle undefined case
+                value={value || ''} 
                 onChangeText={onChange}
                 onBlur={onBlur}
                 error={errors.notes?.message}

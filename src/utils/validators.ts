@@ -1,32 +1,24 @@
-// src/utils/validators.ts
 import * as yup from 'yup';
 import { VALIDATION, PAYMENT_METHODS, TRANSACTION_TYPES } from './constants';
 
-// Validação de email
 export const isValidEmail = (email: string): boolean => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
 };
 
-// Validação de senha
 export const isValidPassword = (password: string): boolean => {
   return password.length >= VALIDATION.MIN_PASSWORD_LENGTH;
 };
 
-// Validação de valor monetário
 export const isValidAmount = (amount: number): boolean => {
   return amount >= VALIDATION.MIN_AMOUNT && amount <= VALIDATION.MAX_AMOUNT;
 };
 
-// Validação de cor hexadecimal
 export const isValidHexColor = (color: string): boolean => {
   const hexRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
   return hexRegex.test(color);
 };
 
-// Schemas de validação com Yup
-
-// Schema para login
 export const loginSchema = yup.object({
   email: yup
     .string()
@@ -38,7 +30,6 @@ export const loginSchema = yup.object({
     .min(VALIDATION.MIN_PASSWORD_LENGTH, `Senha deve ter no mínimo ${VALIDATION.MIN_PASSWORD_LENGTH} caracteres`),
 });
 
-// Schema para registro
 export const registerSchema = yup.object({
   name: yup
     .string()
@@ -60,7 +51,6 @@ export const registerSchema = yup.object({
     .oneOf([yup.ref('password')], 'Senhas não conferem'),
 });
 
-// Schema para esqueci a senha
 export const forgotPasswordSchema = yup.object({
   email: yup
     .string()
@@ -68,7 +58,6 @@ export const forgotPasswordSchema = yup.object({
     .email('Email inválido'),
 });
 
-// Schema para reset de senha
 export const resetPasswordSchema = yup.object({
   password: yup
     .string()
@@ -80,7 +69,6 @@ export const resetPasswordSchema = yup.object({
     .oneOf([yup.ref('password')], 'Senhas não conferem'),
 });
 
-// Schema para transação
 export const transactionSchema = yup.object().shape({
   description: yup
     .string()
@@ -121,7 +109,6 @@ export const transactionSchema = yup.object().shape({
     .oneOf(Object.values(PAYMENT_METHODS), 'Método de pagamento inválido'),
 });
 
-// Schema para orçamento
 export const budgetSchema = yup.object({
   name: yup
     .string()
@@ -169,7 +156,6 @@ export const budgetSchema = yup.object({
     }),
 });
 
-// Schema para meta
 export const goalSchema = yup.object({
   title: yup
     .string()
@@ -209,7 +195,6 @@ export const goalSchema = yup.object({
     }),
 });
 
-// Schema para categoria
 export const categorySchema = yup.object({
   name: yup
     .string()
@@ -237,7 +222,6 @@ export const categorySchema = yup.object({
     .max(100, 'Descrição deve ter no máximo 100 caracteres'),
 });
 
-// Schema para perfil do usuário
 export const profileSchema = yup.object({
   name: yup
     .string()
@@ -259,7 +243,6 @@ export const profileSchema = yup.object({
     .oneOf(['light', 'dark'], 'Tema inválido'),
 });
 
-// Schema para mudança de senha
 export const changePasswordSchema = yup.object({
   currentPassword: yup
     .string()

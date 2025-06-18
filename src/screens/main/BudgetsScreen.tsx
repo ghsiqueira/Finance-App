@@ -1,4 +1,3 @@
-// src/screens/main/BudgetsScreen.tsx
 import React, { useState, useCallback } from 'react';
 import {
   View,
@@ -40,7 +39,7 @@ export default function BudgetsScreen({ navigation }: Props) {
   } = useQuery({
     queryKey: ['budgets'],
     queryFn: () => budgetService.getBudgets(),
-    staleTime: 1000 * 60 * 2, // 2 minutos
+    staleTime: 1000 * 60 * 2, 
   });
 
   const {
@@ -354,7 +353,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   
-  // Summary Card
   summaryCard: {
     marginBottom: 16,
   },
@@ -406,7 +404,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Budget Card
   budgetCard: {
     marginBottom: 12,
   },
@@ -507,7 +504,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // Empty State
   emptyState: {
     alignItems: 'center',
     padding: 48,

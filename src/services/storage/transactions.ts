@@ -1,4 +1,3 @@
-// src/services/storage/transactions.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transaction } from '../../types';
 
@@ -40,11 +39,10 @@ class TransactionStorage {
     MONTHLY_CACHE: 'monthly_transaction_cache',
   } as const;
 
-  private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+  private readonly CACHE_DURATION = 5 * 60 * 1000; 
   private readonly MAX_QUICK_TRANSACTIONS = 10;
   private readonly MAX_RECENT_DESCRIPTIONS = 20;
 
-  // Cache de transações
   async cacheTransactions(
     transactions: Transaction[], 
     filters?: any,
@@ -60,7 +58,6 @@ class TransactionStorage {
 
       await AsyncStorage.setItem(this.KEYS.TRANSACTION_CACHE, JSON.stringify(cache));
       
-      // Atualizar estatísticas
       await this.updateTransactionStats(transactions);
       
       console.log(`💾 ${transactions.length} transações cacheadas`);
@@ -76,12 +73,10 @@ class TransactionStorage {
 
       const cache: TransactionCache = JSON.parse(cacheString);
       
-      // Verificar se cache expirou
       if (Date.now() - cache.lastUpdate > this.CACHE_DURATION) {
         return null;
       }
 
-      // Verificar se filtros batem
       if (filters && JSON.stringify(filters) !== JSON.stringify(cache.filters)) {
         return null;
       }
@@ -102,7 +97,6 @@ class TransactionStorage {
     }
   }
 
-  // Estatísticas de transações
   async updateTransactionStats(transactions: Transaction[]): Promise<void> {
     try {
       const totalIncome = transactions
@@ -144,12 +138,10 @@ class TransactionStorage {
     }
   }
 
-  // Transações rápidas (templates)
   async saveQuickTransaction(transaction: Omit<QuickTransaction, 'id' | 'createdAt' | 'useCount'>): Promise<void> {
     try {
       const quickTransactions = await this.getQuickTransactions();
       
-      // Verificar se já existe
       const existing = quickTransactions.find(qt => 
         qt.description === transaction.description &&
         qt.amount === transaction.amount &&
@@ -157,10 +149,8 @@ class TransactionStorage {
       );
 
       if (existing) {
-        // Incrementar contador de uso
         existing.useCount++;
       } else {
-        // Adicionar nova transação rápida
         const newQuickTransaction: QuickTransaction = {
           ...transaction,
           id: `quick_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -170,7 +160,6 @@ class TransactionStorage {
         quickTransactions.push(newQuickTransaction);
       }
 
-      // Ordenar por uso e manter apenas as mais usadas
       quickTransactions.sort((a, b) => b.useCount - a.useCount);
       const limitedQuickTransactions = quickTransactions.slice(0, this.MAX_QUICK_TRANSACTIONS);
 
@@ -200,18 +189,14 @@ class TransactionStorage {
     }
   }
 
-  // Descrições recentes
   async addRecentDescription(description: string): Promise<void> {
     try {
       const recentDescriptions = await this.getRecentDescriptions();
       
-      // Remover se já existe
       const filteredDescriptions = recentDescriptions.filter(desc => desc !== description);
       
-      // Adicionar no início
       filteredDescriptions.unshift(description);
       
-      // Limitar quantidade
       const limitedDescriptions = filteredDescriptions.slice(0, this.MAX_RECENT_DESCRIPTIONS);
       
       await AsyncStorage.setItem(this.KEYS.RECENT_DESCRIPTIONS, JSON.stringify(limitedDescriptions));
@@ -238,7 +223,6 @@ class TransactionStorage {
     }
   }
 
-  // Transações favoritas
   async addFavoriteTransaction(transactionId: string): Promise<void> {
     try {
       const favorites = await this.getFavoriteTransactions();
@@ -280,7 +264,6 @@ class TransactionStorage {
     }
   }
 
-  // Rascunhos de transação
   async saveDraft(draft: Partial<Transaction> & { draftId?: string }): Promise<string> {
     try {
       const drafts = await this.getDrafts();
@@ -292,7 +275,6 @@ class TransactionStorage {
         savedAt: Date.now(),
       };
 
-      // Atualizar ou adicionar
       const existingIndex = drafts.findIndex(d => d.draftId === draftId);
       if (existingIndex >= 0) {
         drafts[existingIndex] = draftData;
@@ -353,7 +335,6 @@ class TransactionStorage {
     }
   }
 
-  // Cache mensal
   async cacheMonthlyTransactions(year: number, month: number, transactions: Transaction[]): Promise<void> {
     try {
       const cacheKey = `${year}-${String(month).padStart(2, '0')}`;
@@ -378,7 +359,6 @@ class TransactionStorage {
       const cached = monthlyCache[cacheKey];
       if (!cached) return null;
 
-      // Verificar se cache não expirou (1 hora para dados mensais)
       if (Date.now() - cached.cachedAt > 60 * 60 * 1000) {
         return null;
       }
@@ -407,7 +387,6 @@ class TransactionStorage {
     }
   }
 
-  // Métodos utilitários
   async getStorageInfo(): Promise<{
     cacheSize: number;
     quickTransactionsCount: number;
@@ -471,7 +450,6 @@ class TransactionStorage {
     }
   }
 
-  // Backup e restore
   async createTransactionBackup(): Promise<any> {
     try {
       const [
@@ -538,7 +516,6 @@ class TransactionStorage {
     }
   }
 
-  // Sugestões inteligentes
   async getTransactionSuggestions(
     description: string,
     type?: 'income' | 'expense'
@@ -553,19 +530,16 @@ class TransactionStorage {
         this.getRecentDescriptions(),
       ]);
 
-      // Filtrar por tipo se especificado
       let filteredQuickTransactions = quickTransactions;
       if (type) {
         filteredQuickTransactions = quickTransactions.filter(qt => qt.type === type);
       }
 
-      // Encontrar transações similares baseadas na descrição
       const similarTransactions = filteredQuickTransactions.filter(qt => 
         qt.description.toLowerCase().includes(description.toLowerCase()) ||
         description.toLowerCase().includes(qt.description.toLowerCase())
       );
 
-      // Filtrar descrições similares
       const similarDescriptions = recentDescriptions.filter(desc =>
         desc.toLowerCase().includes(description.toLowerCase()) ||
         description.toLowerCase().includes(desc.toLowerCase())
@@ -586,7 +560,6 @@ class TransactionStorage {
     }
   }
 
-  // Analytics e insights
   async getTransactionInsights(): Promise<{
     mostUsedDescriptions: Array<{ description: string; count: number }>;
     favoritePaymentMethods: Array<{ method: string; count: number }>;
@@ -597,7 +570,6 @@ class TransactionStorage {
       const quickTransactions = await this.getQuickTransactions();
       const stats = await this.getTransactionStats();
 
-      // Descrições mais usadas
       const descriptionCounts = new Map<string, number>();
       quickTransactions.forEach(qt => {
         descriptionCounts.set(qt.description, qt.useCount);
@@ -607,7 +579,6 @@ class TransactionStorage {
         .sort((a, b) => b.count - a.count)
         .slice(0, 5);
 
-      // Métodos de pagamento favoritos
       const paymentMethodCounts = new Map<string, number>();
       quickTransactions.forEach(qt => {
         const current = paymentMethodCounts.get(qt.paymentMethod) || 0;
@@ -618,7 +589,6 @@ class TransactionStorage {
         .sort((a, b) => b.count - a.count)
         .slice(0, 3);
 
-      // Valores médios por tipo
       const incomeTransactions = quickTransactions.filter(qt => qt.type === 'income');
       const expenseTransactions = quickTransactions.filter(qt => qt.type === 'expense');
       
@@ -631,7 +601,6 @@ class TransactionStorage {
           : 0,
       };
 
-      // Top categorias
       const categoryCounts = new Map<string, { amount: number; count: number }>();
       quickTransactions.forEach(qt => {
         if (qt.categoryId) {
@@ -665,6 +634,5 @@ class TransactionStorage {
   }
 }
 
-// Instância singleton
 export const transactionStorage = new TransactionStorage();
 export default transactionStorage;

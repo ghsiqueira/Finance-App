@@ -1,4 +1,3 @@
-// src/screens/auth/LoginScreen.tsx
 import React, { useState } from 'react';
 import {
   View,
@@ -63,7 +62,6 @@ export default function LoginScreen({ navigation }: Props) {
       
       if (response.success && response.data) {
         await setAuth(response.data.user, response.data.token);
-        // Navegação será automática devido ao estado de autenticação
       } else {
         Alert.alert('Erro', response.message || 'Erro ao fazer login');
       }

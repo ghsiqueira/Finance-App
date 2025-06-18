@@ -1,9 +1,7 @@
-// src/types/index.ts
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { CompositeScreenProps } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-// Navigation Types
 export type RootStackParamList = {
   Auth: undefined;
   Main: undefined;
@@ -242,7 +240,6 @@ export interface Alert {
   data: any;
 }
 
-// Tipos para formulários
 export interface LoginForm {
   email: string;
   password: string;
@@ -288,5 +285,5 @@ export interface GoalForm {
 }
 
 export interface Props {
-  navigation: any; // ou o tipo específico da navegação
+  navigation: any; 
 }

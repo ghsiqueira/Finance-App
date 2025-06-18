@@ -1,4 +1,3 @@
-// src/screens/main/AddTransactionScreen.tsx - VERSÃO MELHORADA
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -28,7 +27,6 @@ import { formatInputCurrency, parseNumber } from '../../utils/formatters';
 import { PAYMENT_METHODS } from '../../utils/constants';
 import type { MainStackScreenProps, TransactionForm, Category } from '../../types';
 
-// Melhorar os tipos
 interface EnhancedCategory extends Category {
   _id: string;
   name: string;
@@ -66,7 +64,6 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
   const themeConfig = getTheme(theme);
   const queryClient = useQueryClient();
 
-  // Animação para feedback visual
   const scaleAnim = new Animated.Value(1);
   const fadeAnim = new Animated.Value(0);
 
@@ -88,10 +85,9 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
       notes: '',
       paymentMethod: 'cash' as PaymentMethodType,
     },
-    mode: 'onChange', // Validação em tempo real
+    mode: 'onChange', 
   });
 
-  // Buscar categorias
   const { data: categoriesResponse, isLoading: loadingCategories } = useQuery({
     queryKey: ['categories', selectedType],
     queryFn: () => categoryService.getCategories({ type: selectedType }),
@@ -99,14 +95,12 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
 
   const categories = categoriesResponse?.data?.categories || [];
 
-  // Mutation para criar transação
   const createTransactionMutation = useMutation({
     mutationFn: transactionService.createTransaction,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       
-      // Animação de sucesso
       setShowSuccess(true);
       Animated.sequence([
         Animated.timing(scaleAnim, {
@@ -127,7 +121,6 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
         useNativeDriver: true,
       }).start();
 
-      // Mostrar sucesso e voltar
       setTimeout(() => {
         Alert.alert(
           '🎉 Sucesso!', 
@@ -161,19 +154,16 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
     },
   });
 
-  // Atualizar tipo quando mudar
   useEffect(() => {
     setValue('type', selectedType);
     setSelectedCategory('');
     setValue('categoryId', '');
   }, [selectedType, setValue]);
 
-  // Atualizar categoria quando mudar
   useEffect(() => {
     setValue('categoryId', selectedCategory);
   }, [selectedCategory, setValue]);
 
-  // Atualizar método de pagamento quando mudar
   useEffect(() => {
     setValue('paymentMethod', selectedPaymentMethod);
   }, [selectedPaymentMethod, setValue]);
@@ -198,13 +188,10 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
   };
 
   const handleAmountChange = (value: string) => {
-    // Remover tudo exceto números e vírgula
     const cleanValue = value.replace(/[^\d,]/g, '');
     
-    // Converter vírgula para ponto e dividir por 100 para centavos
     const numericValue = parseFloat(cleanValue.replace(',', '.')) / 100 || 0;
     
-    // Formatar como moeda
     const formattedValue = numericValue.toLocaleString('pt-BR', {
       style: 'currency',
       currency: 'BRL',
@@ -216,7 +203,6 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
   const handleTypeChange = (type: 'income' | 'expense') => {
     setSelectedType(type);
     
-    // Animação suave para mudança de tipo
     Animated.timing(scaleAnim, {
       toValue: 0.95,
       duration: 100,

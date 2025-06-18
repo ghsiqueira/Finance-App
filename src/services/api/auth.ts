@@ -1,4 +1,3 @@
-// src/services/api/auth.ts - VERSÃO ATUALIZADA
 import { apiClient } from './client';
 import { ApiResponse, User, LoginForm, RegisterForm } from '../../types';
 
@@ -12,7 +11,6 @@ export interface RegisterResponse {
 }
 
 export const authService = {
-  // Login com logs detalhados
   async login(credentials: LoginForm): Promise<ApiResponse<LoginResponse>> {
     try {
       console.log('🔐 Iniciando login para:', credentials.email);
@@ -30,12 +28,10 @@ export const authService = {
     }
   },
 
-  // Registro com validação melhorada
   async register(userData: RegisterForm): Promise<ApiResponse<RegisterResponse>> {
     try {
       console.log('📝 Iniciando registro para:', userData.email);
       
-      // Validação local antes de enviar
       if (!userData.name || !userData.email || !userData.password || !userData.confirmPassword) {
         throw new Error('Todos os campos são obrigatórios');
       }
@@ -48,7 +44,6 @@ export const authService = {
         throw new Error('A senha deve ter pelo menos 6 caracteres');
       }
 
-      // Remover confirmPassword antes de enviar
       const { confirmPassword, ...dataToSend } = userData;
       
       const response = await apiClient.post<ApiResponse<RegisterResponse>>('/auth/register', dataToSend);
@@ -64,7 +59,6 @@ export const authService = {
     }
   },
 
-  // Esqueci a senha
   async forgotPassword(email: string): Promise<ApiResponse<null>> {
     try {
       return await apiClient.post('/auth/forgot-password', { email });
@@ -76,7 +70,6 @@ export const authService = {
     }
   },
 
-  // Reset de senha
   async resetPassword(token: string, password: string): Promise<ApiResponse<null>> {
     try {
       return await apiClient.post('/auth/reset-password', { token, password });
@@ -88,7 +81,6 @@ export const authService = {
     }
   },
 
-  // Verificar email
   async verifyEmail(token: string): Promise<ApiResponse<null>> {
     try {
       return await apiClient.post('/auth/verify-email', { token });
@@ -100,7 +92,6 @@ export const authService = {
     }
   },
 
-  // Reenviar verificação
   async resendVerification(email: string): Promise<ApiResponse<null>> {
     try {
       return await apiClient.post('/auth/resend-verification', { email });
@@ -112,7 +103,6 @@ export const authService = {
     }
   },
 
-  // Buscar perfil atual
   async getProfile(): Promise<ApiResponse<{ user: User }>> {
     try {
       return await apiClient.get('/auth/me');
@@ -124,18 +114,15 @@ export const authService = {
     }
   },
 
-  // Logout
   async logout(): Promise<ApiResponse<null>> {
     try {
       await apiClient.post('/auth/logout');
       return { success: true, message: 'Logout realizado com sucesso' };
     } catch (error: any) {
-      // Mesmo se der erro no backend, limpar dados locais
       return { success: true, message: 'Logout realizado com sucesso' };
     }
   },
 
-  // Verificar se token é válido
   async validateToken(): Promise<boolean> {
     try {
       const response = await this.getProfile();
@@ -145,7 +132,6 @@ export const authService = {
     }
   },
 
-  // Teste de conectividade - VERSÃO MELHORADA
   async testConnection(): Promise<{ success: boolean; message: string; data?: any }> {
     try {
       console.log('🔍 Testando conexão com backend...');

@@ -45,7 +45,6 @@ export default function ReportsScreen({ navigation }: Props) {
     { key: 'year', label: 'Ano', icon: 'calendar-outline' },
   ];
 
-  // Calcular datas baseado no período selecionado
   const getDateRange = () => {
     const now = new Date();
     let startDate: Date;
@@ -64,7 +63,7 @@ export default function ReportsScreen({ navigation }: Props) {
         startDate = new Date(now.getFullYear(), 0, 1);
         endDate = new Date(now.getFullYear(), 11, 31);
         break;
-      default: // month
+      default: 
         startDate = startOfMonth(now);
         endDate = endOfMonth(now);
     }
@@ -77,13 +76,11 @@ export default function ReportsScreen({ navigation }: Props) {
 
   const { startDate, endDate } = getDateRange();
 
-  // Buscar estatísticas
   const { data: statsResponse, isLoading: statsLoading } = useQuery({
     queryKey: ['transaction-stats', startDate, endDate],
     queryFn: () => transactionService.getStats(startDate, endDate),
   });
 
-  // Buscar estatísticas por categoria
   const { data: categoryStatsResponse, isLoading: categoryLoading } = useQuery({
     queryKey: ['category-stats', startDate, endDate],
     queryFn: () => categoryService.getCategoryStats(startDate, endDate),
@@ -94,11 +91,9 @@ export default function ReportsScreen({ navigation }: Props) {
 
   const isLoading = statsLoading || categoryLoading;
 
-  // Preparar dados para gráficos
   const prepareLineChartData = () => {
     if (!stats) return { labels: [], datasets: [] };
 
-    // Dados simulados para o gráfico de linha (evolução mensal)
     const labels = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun'];
     const incomeData = [3000, 3200, 2800, 3500, 3100, 3300];
     const expenseData = [2500, 2800, 2600, 2900, 2700, 2400];
@@ -337,7 +332,6 @@ export default function ReportsScreen({ navigation }: Props) {
               variant="outline"
               leftIcon={<Ionicons name="download-outline" size={20} color={themeConfig.colors.primary} />}
               onPress={() => {
-                // TODO: Implementar exportação
                 alert('Exportação será implementada em breve');
               }}
               fullWidth
@@ -349,7 +343,6 @@ export default function ReportsScreen({ navigation }: Props) {
               variant="outline"
               leftIcon={<Ionicons name="share-outline" size={20} color={themeConfig.colors.primary} />}
               onPress={() => {
-                // TODO: Implementar compartilhamento
                 alert('Compartilhamento será implementado em breve');
               }}
               fullWidth

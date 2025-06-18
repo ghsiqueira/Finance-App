@@ -1,4 +1,3 @@
-// src/store/budgetStore.ts
 import { create } from 'zustand';
 import { Budget } from '../types';
 
@@ -29,7 +28,6 @@ interface Alert {
 }
 
 interface BudgetStore {
-  // Estado
   budgets: Budget[];
   filteredBudgets: Budget[];
   selectedBudget: Budget | null;
@@ -38,37 +36,29 @@ interface BudgetStore {
   isLoading: boolean;
   error: string | null;
   
-  // Alertas
   alerts: Alert[];
   
-  // Ações
   setBudgets: (budgets: Budget[]) => void;
   addBudget: (budget: Budget) => void;
   updateBudget: (id: string, updates: Partial<Budget>) => void;
   removeBudget: (id: string) => void;
   toggleBudgetStatus: (id: string) => void;
   
-  // Filtros
   setFilters: (filters: Partial<BudgetFilters>) => void;
   clearFilters: () => void;
   applyFilters: () => void;
   
-  // Seleção
   selectBudget: (budget: Budget | null) => void;
   
-  // Cálculos
   calculateSummary: () => void;
   updateBudgetProgress: (budgetId: string, spent: number) => void;
   
-  // Alertas
   generateAlerts: () => void;
   dismissAlert: (budgetId: string) => void;
   
-  // Estados
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   
-  // Utilitários
   getBudgetsByCategory: (categoryId: string) => Budget[];
   getBudgetsByStatus: (status: 'active' | 'expired' | 'future') => Budget[];
   getExceededBudgets: () => Budget[];
@@ -80,12 +70,10 @@ interface BudgetStore {
     daysRemaining: number;
   } | null;
   
-  // Reset
   reset: () => void;
 }
 
 export const useBudgetStore = create<BudgetStore>((set, get) => ({
-  // Estado inicial
   budgets: [],
   filteredBudgets: [],
   selectedBudget: null,
@@ -95,7 +83,6 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
   error: null,
   alerts: [],
 
-  // Ações principais
   setBudgets: (budgets) => {
     set({ budgets });
     get().applyFilters();
@@ -124,7 +111,6 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
     get().calculateSummary();
     get().generateAlerts();
     
-    // Atualizar orçamento selecionado se for o mesmo
     const { selectedBudget } = get();
     if (selectedBudget && selectedBudget._id === id) {
       set({ selectedBudget: { ...selectedBudget, ...updates } });
@@ -143,7 +129,6 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
     get().applyFilters();
     get().calculateSummary();
     
-    // Limpar seleção se for o orçamento removido
     const { selectedBudget } = get();
     if (selectedBudget && selectedBudget._id === id) {
       set({ selectedBudget: null });
@@ -162,7 +147,6 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
     get().generateAlerts();
   },
 
-  // Filtros
   setFilters: (newFilters) => {
     const { filters } = get();
     const updatedFilters = { ...filters, ...newFilters };
@@ -180,7 +164,6 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
     let filtered = [...budgets];
     const now = new Date();
 
-    // Filtro por status
     if (filters.status) {
       filtered = filtered.filter(b => {
         const endDate = new Date(b.endDate);
@@ -199,22 +182,18 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
       });
     }
 
-    // Filtro por período
     if (filters.period) {
       filtered = filtered.filter(b => b.period === filters.period);
     }
 
-    // Filtro por categoria
     if (filters.categoryId) {
       filtered = filtered.filter(b => b.categoryId === filters.categoryId);
     }
 
-    // Filtro por excedidos
     if (filters.isExceeded) {
       filtered = filtered.filter(b => b.isExceeded);
     }
 
-    // Filtro por próximos do limite
     if (filters.nearLimit) {
       filtered = filtered.filter(b => {
         const threshold = b.alertThreshold || 80;
@@ -222,23 +201,19 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
       });
     }
 
-    // Ordenar por data de criação (mais recente primeiro)
     filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     set({ filteredBudgets: filtered });
   },
 
-  // Seleção
   selectBudget: (budget) => {
     set({ selectedBudget: budget });
   },
 
-  // Cálculos
   calculateSummary: () => {
     const { budgets } = get();
     const now = new Date();
     
-    // Filtrar orçamentos ativos
     const activeBudgets = budgets.filter(b => {
       const endDate = new Date(b.endDate);
       const startDate = new Date(b.startDate);
@@ -294,7 +269,6 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
     get().generateAlerts();
   },
 
-  // Alertas
   generateAlerts: () => {
     const { budgets } = get();
     const now = new Date();
@@ -307,7 +281,6 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
       
       if (!isActive) return;
 
-      // Alerta para orçamentos excedidos
       if (budget.isExceeded) {
         alerts.push({
           budgetId: budget._id,
@@ -317,7 +290,6 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
           severity: 'high',
         });
       }
-      // Alerta para orçamentos próximos do limite
       else if (budget.spentPercentage >= (budget.alertThreshold || 80)) {
         alerts.push({
           budgetId: budget._id,
@@ -328,7 +300,6 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
         });
       }
 
-      // Alerta para orçamentos que expiram em breve
       const daysUntilExpiry = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
       if (daysUntilExpiry <= 3 && daysUntilExpiry > 0) {
         alerts.push({
@@ -350,11 +321,9 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
     set({ alerts: updatedAlerts });
   },
 
-  // Estados
   setLoading: (loading) => set({ isLoading: loading }),
   setError: (error) => set({ error }),
 
-  // Utilitários
   getBudgetsByCategory: (categoryId) => {
     const { filteredBudgets } = get();
     return filteredBudgets.filter(b => b.categoryId === categoryId);
@@ -411,7 +380,6 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
     };
   },
 
-  // Reset
   reset: () => {
     set({
       budgets: [],

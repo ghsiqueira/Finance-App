@@ -1,4 +1,3 @@
-// src/components/common/Button.tsx
 import React from 'react';
 import {
   TouchableOpacity,
@@ -113,7 +112,7 @@ export default function Button({
           paddingVertical: themeConfig.spacing.md,
           minHeight: 56,
         };
-      default: // medium
+      default:
         return {
           paddingHorizontal: themeConfig.spacing.lg,
           paddingVertical: themeConfig.spacing.md,

@@ -1,4 +1,3 @@
-// src/screens/main/ProfileScreen.tsx
 import React, { useState } from 'react';
 import {
   View,
@@ -44,7 +43,7 @@ export default function ProfileScreen({ navigation }: Props) {
   } = useQuery({
     queryKey: ['user', 'stats'],
     queryFn: () => userService.getStats(),
-    staleTime: 1000 * 60 * 10, // 10 minutos
+    staleTime: 1000 * 60 * 10, 
   });
 
   const stats = statsResponse?.data;
@@ -208,7 +207,6 @@ export default function ProfileScreen({ navigation }: Props) {
             title="Moeda"
             subtitle={`${user?.currency || 'BRL'} - Real Brasileiro`}
             onPress={() => {
-              // TODO: Implementar seleção de moeda
             }}
           />
         </MenuSection>
@@ -239,7 +237,6 @@ export default function ProfileScreen({ navigation }: Props) {
             title="Notificações"
             subtitle="Alertas de orçamento, lembretes de metas"
             onPress={() => {
-              // TODO: Implementar configurações de notificação
             }}
           />
           <MenuDivider />
@@ -248,7 +245,6 @@ export default function ProfileScreen({ navigation }: Props) {
             title="Idioma"
             subtitle="Português (Brasil)"
             onPress={() => {
-              // TODO: Implementar seleção de idioma
             }}
           />
         </MenuSection>
@@ -274,7 +270,6 @@ export default function ProfileScreen({ navigation }: Props) {
             title="Exportar Dados"
             subtitle="Baixar seus dados em CSV ou JSON"
             onPress={() => {
-              // TODO: Implementar exportação de dados
             }}
           />
         </MenuSection>
@@ -286,7 +281,6 @@ export default function ProfileScreen({ navigation }: Props) {
             title="Central de Ajuda"
             subtitle="Perguntas frequentes e tutoriais"
             onPress={() => {
-              // TODO: Implementar central de ajuda
             }}
           />
           <MenuDivider />
@@ -295,7 +289,6 @@ export default function ProfileScreen({ navigation }: Props) {
             title="Fale Conosco"
             subtitle="Entre em contato com o suporte"
             onPress={() => {
-              // TODO: Implementar contato
             }}
           />
           <MenuDivider />
@@ -304,7 +297,6 @@ export default function ProfileScreen({ navigation }: Props) {
             title="Sobre o App"
             subtitle="Versão 1.0.0"
             onPress={() => {
-              // TODO: Implementar tela sobre
             }}
           />
         </MenuSection>
@@ -358,7 +350,6 @@ const styles = StyleSheet.create({
     padding: 16,
   },
 
-  // Profile Card
   profileCard: {
     marginBottom: 24,
   },
@@ -429,7 +420,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.8)',
   },
 
-  // Menu Sections
   menuSection: {
     marginBottom: 24,
   },
@@ -484,17 +474,15 @@ const styles = StyleSheet.create({
     marginLeft: 68,
   },
 
-  // Logout
   logoutSection: {
     marginTop: 8,
     marginBottom: 32,
   },
   logoutButton: {
     borderWidth: 2,
-    borderColor: '#ef4444', // Cor fixa para evitar conflito de tipos
+    borderColor: '#ef4444', 
   },
 
-  // Footer
   footer: {
     alignItems: 'center',
     paddingVertical: 20,

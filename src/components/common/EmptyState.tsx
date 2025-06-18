@@ -1,4 +1,3 @@
-// src/components/common/EmptyState.tsx
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -82,8 +81,6 @@ const styles = StyleSheet.create({
   button: {
     minWidth: 150,
   },
-  
-  // Reports Screen Styles
   content: {
     flex: 1,
     padding: 16,

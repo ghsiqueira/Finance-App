@@ -1,8 +1,6 @@
-// src/utils/calculations.ts
 import { Transaction, Budget, Goal } from '../types';
 
 export const calculations = {
-  // Cálculos de transação
   calculateBalance: (transactions: Transaction[]): number => {
     return transactions.reduce((balance, transaction) => {
       return transaction.type === 'income' 
@@ -23,7 +21,6 @@ export const calculations = {
     return total / transactions.length;
   },
 
-  // Cálculos de orçamento
   calculateBudgetProgress: (budget: Budget): {
     percentage: number;
     remaining: number;
@@ -83,7 +80,6 @@ export const calculations = {
     };
   },
 
-  // Cálculos de meta
   calculateGoalProgress: (goal: Goal): {
     percentage: number;
     remaining: number;
@@ -103,22 +99,20 @@ export const calculations = {
     const dailySavingsNeeded = daysRemaining > 0 ? remaining / daysRemaining : 0;
     const monthlySavingsNeeded = dailySavingsNeeded * 30;
     
-    // Calcular se está no caminho certo
     const startDate = new Date(goal.startDate || goal.createdAt);
     const totalDays = Math.ceil((targetDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
     const daysPassed = Math.max(1, totalDays - daysRemaining);
     const expectedProgress = (daysPassed / totalDays) * 100;
-    const isOnTrack = percentage >= expectedProgress * 0.8; // 80% do esperado
+    const isOnTrack = percentage >= expectedProgress * 0.8; 
 
-    // Projetar data de conclusão baseada no progresso atual
     let projectedCompletionDate: Date | null = null;
     if (goal.contributions && goal.contributions.length > 0) {
-      const recentContributions = goal.contributions.slice(-3); // Últimas 3 contribuições
+      const recentContributions = goal.contributions.slice(-3); 
       const averageContribution = recentContributions.reduce((sum, c) => sum + c.amount, 0) / recentContributions.length;
       
       if (averageContribution > 0) {
         const contributionsNeeded = Math.ceil(remaining / averageContribution);
-        projectedCompletionDate = new Date(now.getTime() + (contributionsNeeded * 30 * 24 * 60 * 60 * 1000)); // Assumindo contribuição mensal
+        projectedCompletionDate = new Date(now.getTime() + (contributionsNeeded * 30 * 24 * 60 * 60 * 1000)); 
       }
     }
 
@@ -133,7 +127,6 @@ export const calculations = {
     };
   },
 
-  // Cálculos estatísticos
   calculateCategoryDistribution: (transactions: Transaction[]): Array<{
     categoryId: string;
     categoryName: string;
@@ -211,7 +204,6 @@ export const calculations = {
     }).slice(-months);
   },
 
-  // Cálculos de performance
   calculateSavingsRate: (income: number, expenses: number): number => {
     if (income <= 0) return 0;
     return Math.round(((income - expenses) / income) * 100);
@@ -222,7 +214,6 @@ export const calculations = {
     return Math.round((expenses / income) * 100);
   },
 
-  // Projeções
   projectFutureBalance: (
     currentBalance: number,
     monthlyIncome: number,
@@ -237,7 +228,6 @@ export const calculations = {
     return monthlyExpenses * months;
   },
 
-  // Compound interest calculation
   calculateCompoundInterest: (
     principal: number,
     rate: number,
@@ -247,7 +237,6 @@ export const calculations = {
     return principal * Math.pow(1 + rate / compoundingFrequency, compoundingFrequency * time);
   },
 
-  // Calcular taxa de crescimento
   calculateGrowthRate: (oldValue: number, newValue: number): number => {
     if (oldValue === 0) return 0;
     return Math.round(((newValue - oldValue) / oldValue) * 100);

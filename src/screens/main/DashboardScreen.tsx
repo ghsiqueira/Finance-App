@@ -1,4 +1,3 @@
-// src/screens/main/DashboardScreen.tsx
 import React, { useState, useCallback } from 'react';
 import {
   View,
@@ -41,7 +40,7 @@ export default function DashboardScreen({ navigation }: Props) {
   } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => userService.getDashboard(),
-    staleTime: 1000 * 60 * 5, // 5 minutos
+    staleTime: 1000 * 60 * 5, 
   });
 
   const onRefresh = useCallback(async () => {
@@ -306,7 +305,6 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   
-  // Balance Card
   balanceCard: {
     marginBottom: 16,
     minHeight: 180,
@@ -365,7 +363,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
 
-  // Quick Actions
   quickActionsCard: {
     marginBottom: 16,
   },
@@ -394,7 +391,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Recent Transactions
   recentTransactionsCard: {
     marginBottom: 16,
   },
@@ -452,7 +448,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
-  // Empty State
   emptyState: {
     alignItems: 'center',
     padding: 32,
@@ -468,7 +463,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Alerts
   alertsCard: {
     marginBottom: 16,
   },

@@ -14,7 +14,7 @@ export const useTransactions = (filters?: any) => {
   } = useQuery({
     queryKey: ['transactions', filters],
     queryFn: () => transactionService.getTransactions(filters),
-    staleTime: 1000 * 60 * 2, // 2 minutos
+    staleTime: 1000 * 60 * 2, 
     enabled: isOnline,
   });
 
@@ -25,7 +25,6 @@ export const useTransactions = (filters?: any) => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
     onError: async (error: any, variables) => {
-      // Se offline, salvar para sincronizar depois
       if (!isOnline) {
         await saveOfflineTransaction({
           ...variables,

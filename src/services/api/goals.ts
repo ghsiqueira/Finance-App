@@ -1,4 +1,3 @@
-// src/services/api/goals.ts
 import { apiClient } from './client';
 import { ApiResponse, Goal, GoalForm } from '../../types';
 
@@ -34,7 +33,6 @@ export interface ReminderData {
 }
 
 export const goalService = {
-  // Listar metas
   async getGoals(filters: GoalFilters = {}): Promise<ApiResponse<{ goals: Goal[] }>> {
     const params = new URLSearchParams();
     
@@ -47,7 +45,6 @@ export const goalService = {
     return apiClient.get(`/goals?${params.toString()}`);
   },
 
-  // Buscar meta por ID
   async getGoal(id: string): Promise<ApiResponse<{
     goal: Goal;
     contributionStats: {
@@ -61,7 +58,6 @@ export const goalService = {
     return apiClient.get(`/goals/${id}`);
   },
 
-  // Criar meta
   async createGoal(data: GoalForm): Promise<ApiResponse<{ goal: Goal }>> {
     const payload = {
       ...data,
@@ -72,7 +68,6 @@ export const goalService = {
     return apiClient.post('/goals', payload);
   },
 
-  // Atualizar meta
   async updateGoal(id: string, data: Partial<GoalForm>): Promise<ApiResponse<{ goal: Goal }>> {
     const payload = {
       ...data,
@@ -83,22 +78,18 @@ export const goalService = {
     return apiClient.put(`/goals/${id}`, payload);
   },
 
-  // Deletar meta
   async deleteGoal(id: string): Promise<ApiResponse<null>> {
     return apiClient.delete(`/goals/${id}`);
   },
 
-  // Adicionar contribuição
   async addContribution(id: string, data: ContributionData): Promise<ApiResponse<{ goal: Goal }>> {
     return apiClient.post(`/goals/${id}/contribute`, data);
   },
 
-  // Remover contribuição
   async removeContribution(id: string, contributionId: string): Promise<ApiResponse<{ goal: Goal }>> {
     return apiClient.delete(`/goals/${id}/contributions/${contributionId}`);
   },
 
-  // Adicionar lembrete
   async addReminder(id: string, data: ReminderData): Promise<ApiResponse<{ goal: Goal }>> {
     const payload = {
       ...data,
@@ -108,22 +99,18 @@ export const goalService = {
     return apiClient.post(`/goals/${id}/reminders`, payload);
   },
 
-  // Remover lembrete
   async removeReminder(id: string, reminderId: string): Promise<ApiResponse<{ goal: Goal }>> {
     return apiClient.delete(`/goals/${id}/reminders/${reminderId}`);
   },
 
-  // Alterar status da meta
   async updateGoalStatus(id: string, status: 'active' | 'completed' | 'paused' | 'cancelled'): Promise<ApiResponse<{ goal: Goal }>> {
     return apiClient.post(`/goals/${id}/status`, { status });
   },
 
-  // Obter resumo das metas
   async getGoalSummary(): Promise<ApiResponse<GoalSummary>> {
     return apiClient.get('/goals/summary');
   },
 
-  // Buscar metas offline-first
   async getGoalsOfflineFirst(filters: GoalFilters = {}): Promise<Goal[]> {
     const cacheKey = `goals_${JSON.stringify(filters)}`;
     
@@ -136,22 +123,18 @@ export const goalService = {
     );
   },
 
-  // Buscar metas ativas
   async getActiveGoals(): Promise<ApiResponse<{ goals: Goal[] }>> {
     return this.getGoals({ status: 'active' });
   },
 
-  // Buscar metas concluídas
   async getCompletedGoals(): Promise<ApiResponse<{ goals: Goal[] }>> {
     return this.getGoals({ status: 'completed' });
   },
 
-  // Buscar metas por prioridade
   async getGoalsByPriority(priority: 'low' | 'medium' | 'high'): Promise<ApiResponse<{ goals: Goal[] }>> {
     return this.getGoals({ priority });
   },
 
-  // Buscar metas próximas do prazo
   async getUpcomingGoals(days: number = 30): Promise<Goal[]> {
     try {
       const response = await this.getActiveGoals();
@@ -163,7 +146,6 @@ export const goalService = {
     }
   },
 
-  // Calcular estatísticas da meta
   calculateGoalStats(goal: Goal): {
     progressPercentage: number;
     remainingAmount: number;
@@ -187,12 +169,11 @@ export const goalService = {
     const monthsRemaining = daysRemaining / 30;
     const monthlySavingsNeeded = monthsRemaining > 0 ? remainingAmount / monthsRemaining : remainingAmount;
     
-    // Calcular se está no caminho certo
     const totalDays = Math.ceil((targetDate.getTime() - new Date(goal.startDate).getTime()) / (1000 * 60 * 60 * 24));
     const daysPassed = totalDays - daysRemaining;
     const expectedProgress = daysPassed / totalDays;
     const actualProgress = progressPercentage / 100;
-    const isOnTrack = actualProgress >= (expectedProgress * 0.8); // 20% de tolerância
+    const isOnTrack = actualProgress >= (expectedProgress * 0.8);
 
     return {
       progressPercentage,
@@ -204,7 +185,6 @@ export const goalService = {
     };
   },
 
-  // Duplicar meta
   async duplicateGoal(id: string): Promise<ApiResponse<{ goal: Goal }>> {
     const { data } = await this.getGoal(id);
     
@@ -214,7 +194,6 @@ export const goalService = {
 
     const { _id, currentAmount, contributions, reminders, completedAt, createdAt, updatedAt, ...goalData } = data.goal;
     
-    // Criar nova meta com data futura
     const originalTargetDate = new Date(goalData.targetDate);
     const today = new Date();
     const newTargetDate = new Date(today.getTime() + (originalTargetDate.getTime() - new Date(goalData.startDate).getTime()));
@@ -230,7 +209,6 @@ export const goalService = {
     });
   },
 
-  // Obter histórico de contribuições
   async getContributionHistory(id: string): Promise<ApiResponse<any[]>> {
     const { data } = await this.getGoal(id);
     
@@ -245,7 +223,6 @@ export const goalService = {
     };
   },
 
-  // Obter projeção de conclusão
   async getCompletionProjection(id: string): Promise<{
     projectedCompletionDate: Date | null;
     monthsToComplete: number;
@@ -270,7 +247,6 @@ export const goalService = {
       };
     }
 
-    // Calcular média mensal de contribuições dos últimos 3 meses
     const threeMonthsAgo = new Date();
     threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
     
@@ -302,17 +278,14 @@ export const goalService = {
     };
   },
 
-  // Marcar meta como concluída manualmente
   async completeGoal(id: string): Promise<ApiResponse<{ goal: Goal }>> {
     return this.updateGoalStatus(id, 'completed');
   },
 
-  // Pausar meta
   async pauseGoal(id: string): Promise<ApiResponse<{ goal: Goal }>> {
     return this.updateGoalStatus(id, 'paused');
   },
 
-  // Reativar meta
   async reactivateGoal(id: string): Promise<ApiResponse<{ goal: Goal }>> {
     return this.updateGoalStatus(id, 'active');
   },

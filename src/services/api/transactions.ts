@@ -1,4 +1,3 @@
-// src/services/api/transactions.ts
 import { apiClient } from './client';
 import { ApiResponse, PaginatedResponse, Transaction, TransactionForm } from '../../types';
 
@@ -35,7 +34,6 @@ export interface BulkTransactionData {
 }
 
 export const transactionService = {
-  // Listar transações com filtros e paginação
   async getTransactions(filters: TransactionFilters = {}): Promise<PaginatedResponse<Transaction>> {
     const params = new URLSearchParams();
     
@@ -48,12 +46,10 @@ export const transactionService = {
     return apiClient.get(`/transactions?${params.toString()}`);
   },
 
-  // Buscar transação por ID
   async getTransaction(id: string): Promise<ApiResponse<{ transaction: Transaction }>> {
     return apiClient.get(`/transactions/${id}`);
   },
 
-  // Criar nova transação
   async createTransaction(data: TransactionForm): Promise<ApiResponse<{ transaction: Transaction }>> {
     const payload = {
       ...data,
@@ -64,7 +60,6 @@ export const transactionService = {
     return apiClient.post('/transactions', payload);
   },
 
-  // Atualizar transação
   async updateTransaction(
     id: string, 
     data: Partial<TransactionForm>
@@ -78,17 +73,14 @@ export const transactionService = {
     return apiClient.put(`/transactions/${id}`, payload);
   },
 
-  // Deletar transação (soft delete)
   async deleteTransaction(id: string): Promise<ApiResponse<null>> {
     return apiClient.delete(`/transactions/${id}`);
   },
 
-  // Restaurar transação deletada
   async restoreTransaction(id: string): Promise<ApiResponse<{ transaction: Transaction }>> {
     return apiClient.post(`/transactions/${id}/restore`);
   },
 
-  // Obter estatísticas
   async getStats(startDate?: string, endDate?: string): Promise<ApiResponse<TransactionStats>> {
     const params = new URLSearchParams();
     
@@ -98,7 +90,6 @@ export const transactionService = {
     return apiClient.get(`/transactions/stats?${params.toString()}`);
   },
 
-  // Criar múltiplas transações
   async createBulkTransactions(data: BulkTransactionData): Promise<ApiResponse<{
     count: number;
     transactions: Transaction[];
@@ -106,7 +97,6 @@ export const transactionService = {
     return apiClient.post('/transactions/bulk', data);
   },
 
-  // Buscar transações offline-first
   async getTransactionsOfflineFirst(filters: TransactionFilters = {}): Promise<Transaction[]> {
     const cacheKey = `transactions_${JSON.stringify(filters)}`;
     
@@ -119,7 +109,6 @@ export const transactionService = {
     );
   },
 
-  // Exportar transações
   async exportTransactions(format: 'json' | 'csv' = 'json', filters: TransactionFilters = {}): Promise<Blob> {
     const params = new URLSearchParams();
     
@@ -136,7 +125,6 @@ export const transactionService = {
     });
   },
 
-  // Duplicar transação
   async duplicateTransaction(id: string): Promise<ApiResponse<{ transaction: Transaction }>> {
     const { data } = await this.getTransaction(id);
     
@@ -157,7 +145,6 @@ export const transactionService = {
     });
   },
 
-  // Buscar transações por categoria
   async getTransactionsByCategory(
     categoryId: string, 
     startDate?: string, 
@@ -175,7 +162,6 @@ export const transactionService = {
     };
   },
 
-  // Buscar transações recentes
   async getRecentTransactions(limit: number = 10): Promise<ApiResponse<Transaction[]>> {
     const response = await this.getTransactions({ limit });
     return {

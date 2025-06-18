@@ -347,7 +347,7 @@ const styles = StyleSheet.create({
   },
   menuDivider: {
     height: 1,
-    marginLeft: 68, // Align with text content
+    marginLeft: 68, 
   },
   logoutSection: {
     marginTop: 32,

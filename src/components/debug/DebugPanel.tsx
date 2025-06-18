@@ -1,4 +1,3 @@
-// src/components/debug/DebugPanel.tsx - VERSÃO ATUALIZADA PARA ANDROID
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -51,7 +50,6 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
   const [apiInfo, setApiInfo] = useState<any>(null);
   const [networkLogs, setNetworkLogs] = useState<string[]>([]);
 
-  // Capturar logs de rede
   useEffect(() => {
     const originalConsoleLog = console.log;
     const originalConsoleError = console.error;
@@ -78,7 +76,6 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
     };
   }, []);
 
-  // Obter informações da API
   useEffect(() => {
     setApiInfo(apiClient.getDebugInfo());
   }, []);
@@ -194,7 +191,6 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
     setIsRunning(true);
     setNetworkLogs([]);
     
-    // Reset tests
     setTests({
       connection: { status: 'waiting', message: '', time: 0 },
       cors: { status: 'waiting', message: '', time: 0 },
@@ -202,7 +198,6 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
       login: { status: 'waiting', message: '', time: 0 },
     });
 
-    // Gerar novo usuário para cada teste
     const newUser = {
       name: 'Usuário Teste',
       email: `teste${Date.now()}@exemplo.com`,
@@ -211,7 +206,6 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
     setTestUser(newUser);
 
     try {
-      // Teste 1: Conexão
       console.log('🧪 Iniciando teste de conexão...');
       const connectionOk = await testConnection();
       if (!connectionOk) {
@@ -221,19 +215,16 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
 
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Teste 2: CORS
       console.log('🧪 Iniciando teste de CORS...');
       await testCORS();
 
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Teste 3: Registro
       console.log('🧪 Iniciando teste de registro...');
       const registerOk = await testRegister();
       
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Teste 4: Login (mesmo se registro falhou, tenta login)
       console.log('🧪 Iniciando teste de login...');
       await testLogin();
 
@@ -274,7 +265,7 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
       platform: Platform.OS,
       apiInfo,
       tests,
-      networkLogs: networkLogs.slice(-10), // Últimos 10 logs
+      networkLogs: networkLogs.slice(-10),
       timestamp: new Date().toISOString()
     };
     

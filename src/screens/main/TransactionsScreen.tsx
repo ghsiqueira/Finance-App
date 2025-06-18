@@ -1,4 +1,3 @@
-// src/screens/main/TransactionsScreen.tsx
 import React, { useState, useCallback } from 'react';
 import {
   View,
@@ -49,7 +48,7 @@ export default function TransactionsScreen({ navigation }: Props) {
       page,
       limit: 20,
     }),
-    staleTime: 1000 * 60 * 2, // 2 minutos
+    staleTime: 1000 * 60 * 2, 
   });
 
   const transactions = transactionsResponse?.data?.items || [];

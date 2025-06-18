@@ -1,9 +1,7 @@
-// src/utils/dateUtils.ts
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInWeeks, differenceInMonths, isAfter, isBefore, isSameDay, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 export const dateUtils = {
-  // Formatar datas
   formatDate: (date: Date | string, formatStr: string = 'dd/MM/yyyy'): string => {
     const dateObj = typeof date === 'string' ? parseISO(date) : date;
     return format(dateObj, formatStr, { locale: ptBR });
@@ -22,7 +20,6 @@ export const dateUtils = {
     return `${Math.floor(diffDays / 365)} anos atrás`;
   },
 
-  // Obter períodos
   getCurrentWeek: (): { start: Date; end: Date } => {
     const now = new Date();
     return {
@@ -47,7 +44,6 @@ export const dateUtils = {
     };
   },
 
-  // Calcular períodos de orçamento
   getBudgetPeriod: (
     startDate: Date,
     period: 'weekly' | 'monthly' | 'quarterly' | 'yearly'
@@ -74,7 +70,6 @@ export const dateUtils = {
     return { start: startDate, end: addDays(endDate, -1) };
   },
 
-  // Verificar se data está em período
   isDateInPeriod: (
     date: Date | string,
     startDate: Date | string,
@@ -87,14 +82,12 @@ export const dateUtils = {
     return !isBefore(dateObj, startObj) && !isAfter(dateObj, endObj);
   },
 
-  // Calcular dias restantes
   getDaysRemaining: (targetDate: Date | string): number => {
     const target = typeof targetDate === 'string' ? parseISO(targetDate) : targetDate;
     const now = new Date();
     return Math.max(0, differenceInDays(target, now));
   },
 
-  // Gerar lista de meses
   getMonthsList: (count: number = 12): Array<{ value: string; label: string }> => {
     const months = [];
     const now = new Date();
@@ -110,12 +103,10 @@ export const dateUtils = {
     return months;
   },
 
-  // Validar data
   isValidDate: (date: any): boolean => {
     return date instanceof Date && !isNaN(date.getTime());
   },
 
-  // Converter string ISO para Date
   parseDate: (dateString: string): Date | null => {
     try {
       return parseISO(dateString);
@@ -124,7 +115,6 @@ export const dateUtils = {
     }
   },
 
-  // Obter primeiro e último dia do mês
   getMonthBounds: (date: Date): { start: Date; end: Date } => {
     return {
       start: startOfMonth(date),
@@ -132,13 +122,11 @@ export const dateUtils = {
     };
   },
 
-  // Calcular idade em dias
   getAgeInDays: (startDate: Date | string): number => {
     const start = typeof startDate === 'string' ? parseISO(startDate) : startDate;
     return differenceInDays(new Date(), start);
   },
 
-  // Obter lista de anos
   getYearsList: (count: number = 5): number[] => {
     const currentYear = new Date().getFullYear();
     const years = [];
@@ -150,7 +138,6 @@ export const dateUtils = {
     return years;
   },
 
-  // Calcular progresso mensal
   getMonthProgress: (): number => {
     const now = new Date();
     const startOfCurrentMonth = startOfMonth(now);
@@ -161,7 +148,6 @@ export const dateUtils = {
     return Math.round((daysPassed / totalDays) * 100);
   },
 
-  // Obter próximas datas de vencimento
   getUpcomingDates: (dates: string[], days: number = 7): string[] => {
     const now = new Date();
     const futureDate = addDays(now, days);

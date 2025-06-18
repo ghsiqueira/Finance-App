@@ -1,4 +1,3 @@
-// src/components/common/Input.tsx
 import React, { useState, forwardRef } from 'react';
 import {
   View,
@@ -61,7 +60,7 @@ const Input = forwardRef<TextInput, InputProps>(({
           fontSize: themeConfig.typography.fontSize.lg,
           paddingHorizontal: themeConfig.spacing.lg,
         };
-      default: // medium
+      default:
         return {
           height: 48,
           fontSize: themeConfig.typography.fontSize.md,

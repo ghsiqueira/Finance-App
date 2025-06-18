@@ -1,4 +1,3 @@
-// src/services/api/categories.ts
 import { apiClient } from './client';
 import { ApiResponse, Category } from '../../types';
 
@@ -31,7 +30,6 @@ export interface CategoryStats {
 }
 
 export const categoryService = {
-  // Listar categorias
   async getCategories(filters: CategoryFilters = {}): Promise<ApiResponse<{ categories: Category[] }>> {
     const params = new URLSearchParams();
     
@@ -44,7 +42,6 @@ export const categoryService = {
     return apiClient.get(`/categories?${params.toString()}`);
   },
 
-  // Buscar categoria por ID
   async getCategory(id: string): Promise<ApiResponse<{ 
     category: Category; 
     stats: { income: { total: number; count: number }; expense: { total: number; count: number } }; 
@@ -52,27 +49,22 @@ export const categoryService = {
     return apiClient.get(`/categories/${id}`);
   },
 
-  // Criar categoria
   async createCategory(data: CategoryForm): Promise<ApiResponse<{ category: Category }>> {
     return apiClient.post('/categories', data);
   },
 
-  // Atualizar categoria
   async updateCategory(id: string, data: Partial<CategoryForm>): Promise<ApiResponse<{ category: Category }>> {
     return apiClient.put(`/categories/${id}`, data);
   },
 
-  // Deletar categoria
   async deleteCategory(id: string): Promise<ApiResponse<null>> {
     return apiClient.delete(`/categories/${id}`);
   },
 
-  // Restaurar categoria
   async restoreCategory(id: string): Promise<ApiResponse<{ category: Category }>> {
     return apiClient.post(`/categories/${id}/restore`);
   },
 
-  // Obter estatísticas das categorias
   async getCategoryStats(
     startDate?: string, 
     endDate?: string, 
@@ -87,12 +79,10 @@ export const categoryService = {
     return apiClient.get(`/categories/stats?${params.toString()}`);
   },
 
-  // Recriar categorias padrão
   async resetDefaultCategories(): Promise<ApiResponse<{ categories: Category[] }>> {
     return apiClient.post('/categories/reset-defaults');
   },
 
-  // Buscar categorias offline-first
   async getCategoriesOfflineFirst(filters: CategoryFilters = {}): Promise<Category[]> {
     const cacheKey = `categories_${JSON.stringify(filters)}`;
     
@@ -105,12 +95,10 @@ export const categoryService = {
     );
   },
 
-  // Buscar categorias por tipo
   async getCategoriesByType(type: 'income' | 'expense'): Promise<ApiResponse<{ categories: Category[] }>> {
     return this.getCategories({ type });
   },
 
-  // Verificar se categoria está sendo usada
   async isCategoryInUse(id: string): Promise<boolean> {
     try {
       const { data } = await this.getCategory(id);
@@ -124,7 +112,6 @@ export const categoryService = {
     }
   },
 
-  // Duplicar categoria
   async duplicateCategory(id: string): Promise<ApiResponse<{ category: Category }>> {
     const { data } = await this.getCategory(id);
     
@@ -143,7 +130,6 @@ export const categoryService = {
     });
   },
 
-  // Obter categorias mais utilizadas
   async getMostUsedCategories(limit: number = 5): Promise<ApiResponse<Category[]>> {
     const statsResponse = await this.getCategoryStats();
     
@@ -163,7 +149,6 @@ export const categoryService = {
     };
   },
 
-  // Buscar categorias sem uso
   async getUnusedCategories(): Promise<ApiResponse<Category[]>> {
     const statsResponse = await this.getCategoryStats();
     

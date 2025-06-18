@@ -1,4 +1,3 @@
-// src/components/forms/RegisterForm.tsx
 import React from 'react';
 import { View, StyleSheet, Alert } from 'react-native';
 import { useForm, Controller } from 'react-hook-form';

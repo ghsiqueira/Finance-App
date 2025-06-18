@@ -1,4 +1,3 @@
-// src/services/network/networkService.ts
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -32,10 +31,8 @@ class NetworkService {
   }
 
   private async initialize() {
-    // Configurar listener inicial
     NetInfo.addEventListener(this.handleNetworkChange.bind(this));
     
-    // Obter estado inicial
     const initialState = await NetInfo.fetch();
     this.handleNetworkChange(initialState);
   }
@@ -53,18 +50,14 @@ class NetworkService {
       details: state.details,
     };
 
-    // Notificar listeners
     this.listeners.forEach(listener => listener(networkState));
 
-    // Log de mudança de estado
     console.log(`📶 Network state changed: ${wasOnline ? 'Online' : 'Offline'} -> ${this.isOnline ? 'Online' : 'Offline'}`);
 
-    // Se voltou online, processar fila offline
     if (!wasOnline && this.isOnline) {
       this.processOfflineQueue();
     }
 
-    // Salvar estado no storage
     this.saveNetworkState(networkState);
   }
 
@@ -86,7 +79,6 @@ class NetworkService {
     }
   }
 
-  // Métodos públicos
   getNetworkState(): NetworkState {
     return {
       isConnected: this.isOnline,
@@ -112,17 +104,14 @@ class NetworkService {
     return this.networkType === 'cellular';
   }
 
-  // Adicionar listener para mudanças de rede
   addNetworkListener(callback: (state: NetworkState) => void): () => void {
     this.listeners.add(callback);
     
-    // Retornar função de cleanup
     return () => {
       this.listeners.delete(callback);
     };
   }
 
-  // Executar função com retry em caso de falha de rede
   async executeWithRetry<T>(
     operation: () => Promise<T>,
     maxAttempts: number = this.config.retryAttempts
@@ -143,15 +132,12 @@ class NetworkService {
         
         console.log(`Tentativa ${attempt}/${maxAttempts} falhou:`, error.message);
         
-        // Se é o último attempt ou erro não é de rede, não tentar novamente
         if (attempt === maxAttempts || !this.isNetworkError(error)) {
           break;
         }
         
-        // Aguardar antes da próxima tentativa
         await this.delay(this.config.retryDelay * attempt);
         
-        // Verificar se voltou online
         const currentState = await NetInfo.fetch();
         if (!currentState.isConnected) {
           console.log('Dispositivo ainda offline, parando tentativas');
@@ -163,7 +149,6 @@ class NetworkService {
     throw lastError!;
   }
 
-  // Adicionar operação à fila offline
   async addToOfflineQueue(operation: {
     id: string;
     method: string;
@@ -182,7 +167,6 @@ class NetworkService {
     }
   }
 
-  // Processar fila offline
   private async processOfflineQueue(): Promise<void> {
     if (!this.config.enableOfflineQueue) return;
     
@@ -201,10 +185,8 @@ class NetworkService {
       
       for (const operation of queue) {
         try {
-          // Aqui você executaria a operação real
           console.log(`Processando operação offline: ${operation.method} ${operation.url}`);
           
-          // Simular processamento
           await this.delay(100);
           
           processedIds.push(operation.id);
@@ -213,7 +195,6 @@ class NetworkService {
         }
       }
       
-      // Remover operações processadas
       if (processedIds.length > 0) {
         const remainingQueue = queue.filter(op => !processedIds.includes(op.id));
         await AsyncStorage.setItem('offlineQueue', JSON.stringify(remainingQueue));
@@ -225,7 +206,6 @@ class NetworkService {
     }
   }
 
-  // Obter fila offline
   private async getOfflineQueue(): Promise<any[]> {
     try {
       const queue = await AsyncStorage.getItem('offlineQueue');
@@ -236,7 +216,6 @@ class NetworkService {
     }
   }
 
-  // Limpar fila offline
   async clearOfflineQueue(): Promise<void> {
     try {
       await AsyncStorage.removeItem('offlineQueue');
@@ -246,13 +225,11 @@ class NetworkService {
     }
   }
 
-  // Obter tamanho da fila offline
   async getOfflineQueueSize(): Promise<number> {
     const queue = await this.getOfflineQueue();
     return queue.length;
   }
 
-  // Verificar se é erro de rede
   private isNetworkError(error: Error): boolean {
     const networkErrorMessages = [
       'network request failed',
@@ -267,7 +244,6 @@ class NetworkService {
     return networkErrorMessages.some(msg => message.includes(msg));
   }
 
-  // Adicionar timeout a uma operação
   private withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
     return Promise.race([
       promise,
@@ -277,22 +253,18 @@ class NetworkService {
     ]);
   }
 
-  // Delay utilitário
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  // Configurar parâmetros do serviço
   configure(config: Partial<NetworkConfig>): void {
     this.config = { ...this.config, ...config };
   }
 
-  // Obter configuração atual
   getConfiguration(): NetworkConfig {
     return { ...this.config };
   }
 
-  // Testar conectividade com um endpoint específico
   async testConnectivity(url: string = 'https://www.google.com'): Promise<boolean> {
     try {
       const controller = new AbortController();
@@ -311,7 +283,6 @@ class NetworkService {
     }
   }
 
-  // Obter informações detalhadas da rede
   async getDetailedNetworkInfo(): Promise<any> {
     try {
       const state = await NetInfo.fetch();
@@ -329,6 +300,5 @@ class NetworkService {
   }
 }
 
-// Instância singleton
 export const networkService = new NetworkService();
 export default networkService;

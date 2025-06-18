@@ -29,7 +29,6 @@ interface ProfileForm {
   currency: string;
 }
 
-// Schema apenas para o formulário de perfil (sem 'theme')
 const profileFormSchema = yup.object().shape({
   name: yup.string().required('Nome obrigatório'),
   email: yup.string().email('Email inválido').required('Email obrigatório'),
@@ -58,7 +57,6 @@ export default function EditProfileScreen({ navigation }: Props) {
   const onSubmit = async (data: ProfileForm) => {
     setIsLoading(true);
     try {
-      // Aqui você faria a chamada para a API
       await updateUser(data);
       Alert.alert('Sucesso', 'Perfil atualizado com sucesso!', [
         { text: 'OK', onPress: () => navigation.goBack() }
@@ -218,7 +216,6 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   
-  // Settings Screen Styles
   sectionTitle: {
     fontSize: 12,
     fontWeight: '600',
@@ -286,7 +283,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
-  // Edit Profile Screen Styles
   avatarCard: {
     marginBottom: 16,
   },
