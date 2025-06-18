@@ -1,11 +1,25 @@
-// src/services/api/client.ts - VERSÃO COMPLETA CORRIGIDA
+// src/services/api/client.ts - VERSÃO ATUALIZADA PARA ANDROID
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
+import { Platform } from 'react-native';
 import { useAuthStore } from '../../store/authStore';
 import { useOfflineStore } from '../../store/offlineStore';
 
-// Configuração base da API
-const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000/api';
+// Configuração automática de URL baseada na plataforma
+const getApiBaseUrl = () => {
+  if (__DEV__) {
+    if (Platform.OS === 'android') {
+      return 'http://10.0.2.2:3000/api';
+    } else if (Platform.OS === 'ios') {
+      return 'http://localhost:3000/api';
+    }
+  }
+  return process.env.API_BASE_URL || 'https://sua-api-producao.com/api';
+};
+
+const API_BASE_URL = getApiBaseUrl();
+
+console.log(`🔗 API Base URL: ${API_BASE_URL} (Platform: ${Platform.OS})`);
 
 // Interface para requisições pendentes
 interface PendingRequest {
@@ -25,6 +39,7 @@ class ApiClient {
   constructor(baseURL: string = API_BASE_URL) {
     this.baseURL = baseURL;
     this.setupNetworkListener();
+    console.log(`📡 ApiClient inicializado com URL: ${this.baseURL}`);
   }
 
   // Configurar listener de rede
@@ -50,6 +65,7 @@ class ApiClient {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
+        'User-Agent': 'FinanceApp/1.0',
       };
 
       if (token) {
@@ -62,6 +78,7 @@ class ApiClient {
       return {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
+        'User-Agent': 'FinanceApp/1.0',
       };
     }
   }
@@ -84,23 +101,27 @@ class ApiClient {
     } = options;
 
     const url = `${this.baseURL}${endpoint}`;
-    const requestId = `req_${Date.now()}_${Math.random()}`;
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     console.log(`🔄 [${requestId}] ${method} ${url}`);
     if (data && __DEV__) {
-      console.log(`📤 [${requestId}] Request body:`, data);
+      console.log(`📤 [${requestId}] Request data:`, data);
     }
 
     try {
       const headers = skipAuth ? {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
+        'User-Agent': 'FinanceApp/1.0',
       } : await this.getAuthHeaders();
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
 
       const config: RequestInit = {
         method,
         headers,
-        signal: AbortSignal.timeout ? AbortSignal.timeout(timeout) : undefined,
+        signal: controller.signal,
       };
 
       if (data && method !== 'GET') {
@@ -108,6 +129,7 @@ class ApiClient {
       }
 
       const response = await fetch(url, config);
+      clearTimeout(timeoutId);
       
       let responseData: any;
       const contentType = response.headers.get('content-type');
@@ -278,57 +300,68 @@ class ApiClient {
     return this.isOnline;
   }
 
-  // Teste de conectividade com o backend
+  // Teste de conectividade com o backend - VERSÃO ATUALIZADA
   async testConnection(): Promise<{ success: boolean; message: string; data?: any }> {
-    try {
-      console.log('🔍 Testando conexão com backend...');
-      
-      const healthUrl = this.baseURL.replace('/api', '/api/health');
-      const response = await fetch(healthUrl, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        signal: AbortSignal.timeout ? AbortSignal.timeout(10000) : undefined,
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Backend conectado:', data);
-        return { 
-          success: true, 
-          message: 'Backend conectado e funcionando', 
-          data 
-        };
-      } else {
-        console.log('⚠️ Backend respondeu com erro:', response.status);
-        return { 
-          success: false, 
-          message: `Backend respondeu com status ${response.status}` 
-        };
+    const urlsToTest = [
+      // URL principal para Android
+      'http://10.0.2.2:3000/api/health',
+      // Fallbacks
+      'http://localhost:3000/api/health',
+      'http://127.0.0.1:3000/api/health',
+    ];
+
+    console.log('🔍 Testando conexão com backend...');
+    
+    for (const testUrl of urlsToTest) {
+      try {
+        console.log(`🔍 Testando: ${testUrl}`);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await fetch(testUrl, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'FinanceApp/1.0',
+          },
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`✅ Backend conectado via: ${testUrl}`, data);
+          
+          // Atualizar URL base se encontrou uma que funciona
+          const baseUrl = testUrl.replace('/health', '');
+          if (baseUrl !== this.baseURL) {
+            this.baseURL = baseUrl;
+            console.log(`🔄 URL base atualizada para: ${this.baseURL}`);
+          }
+          
+          return { 
+            success: true, 
+            message: `Backend conectado via ${testUrl}`, 
+            data 
+          };
+        } else {
+          console.log(`⚠️ ${testUrl} respondeu com status ${response.status}`);
+        }
+      } catch (error: any) {
+        console.error(`❌ Erro ao testar ${testUrl}:`, error.message);
+        
+        if (error.name === 'AbortError') {
+          console.log(`⏱️ Timeout em ${testUrl}`);
+        }
       }
-    } catch (error: any) {
-      console.error('❌ Erro ao testar conexão:', error);
-      
-      if (error.name === 'AbortError' || error.message.includes('timeout')) {
-        return { 
-          success: false, 
-          message: 'Timeout - Backend não responde (verifique se está rodando)' 
-        };
-      }
-      
-      if (error.name === 'TypeError' && error.message.includes('Network request failed')) {
-        return { 
-          success: false, 
-          message: 'Erro de rede - Backend provavelmente não está rodando na porta 3000' 
-        };
-      }
-      
-      return { 
-        success: false, 
-        message: `Erro de conexão: ${error.message}` 
-      };
     }
+    
+    return { 
+      success: false, 
+      message: 'Não foi possível conectar ao backend. Verifique se está rodando na porta 3000.' 
+    };
   }
 
   // Método para requisições offline-first
@@ -403,6 +436,7 @@ class ApiClient {
     return {
       baseURL: this.baseURL,
       isOnline: this.isOnline,
+      platform: Platform.OS,
       pendingRequestsCount: this.pendingRequests.length,
       pendingRequests: this.pendingRequests.map(r => ({
         id: r.id,

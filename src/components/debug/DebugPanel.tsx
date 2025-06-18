@@ -1,4 +1,4 @@
-// src/components/debug/DebugPanel.tsx - VERSÃO COMPLETA
+// src/components/debug/DebugPanel.tsx - VERSÃO ATUALIZADA PARA ANDROID
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -8,6 +8,7 @@ import {
   ScrollView,
   Alert,
   Clipboard,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Button from '../common/Button';
@@ -35,6 +36,7 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
   
   const [tests, setTests] = useState<Record<string, TestResult>>({
     connection: { status: 'waiting', message: '', time: 0 },
+    cors: { status: 'waiting', message: '', time: 0 },
     register: { status: 'waiting', message: '', time: 0 },
     login: { status: 'waiting', message: '', time: 0 },
   });
@@ -56,8 +58,8 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
 
     console.log = (...args) => {
       const message = args.join(' ');
-      if (message.includes('[API]') || message.includes('🔄') || message.includes('📥') || message.includes('📤')) {
-        setNetworkLogs(prev => [...prev.slice(-20), `${new Date().toLocaleTimeString()}: ${message}`]);
+      if (message.includes('[API]') || message.includes('🔄') || message.includes('📥') || message.includes('📤') || message.includes('📡')) {
+        setNetworkLogs(prev => [...prev.slice(-30), `${new Date().toLocaleTimeString()}: ${message}`]);
       }
       originalConsoleLog(...args);
     };
@@ -65,7 +67,7 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
     console.error = (...args) => {
       const message = args.join(' ');
       if (message.includes('[API]') || message.includes('❌')) {
-        setNetworkLogs(prev => [...prev.slice(-20), `${new Date().toLocaleTimeString()}: ERROR: ${message}`]);
+        setNetworkLogs(prev => [...prev.slice(-30), `${new Date().toLocaleTimeString()}: ERROR: ${message}`]);
       }
       originalConsoleError(...args);
     };
@@ -97,7 +99,7 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
       const time = Date.now() - start;
       
       if (result.success) {
-        updateTest('connection', 'success', result.message, time);
+        updateTest('connection', 'success', result.message, time, result.data);
         return true;
       } else {
         updateTest('connection', 'error', result.message, time, result);
@@ -106,6 +108,28 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
     } catch (error: any) {
       const time = Date.now() - start;
       updateTest('connection', 'error', error.message, time, error);
+      return false;
+    }
+  };
+
+  const testCORS = async () => {
+    const start = Date.now();
+    updateTest('cors', 'running', 'Testando CORS...');
+    
+    try {
+      const response = await apiClient.get('/test-cors');
+      const time = Date.now() - start;
+      
+      if (response.success) {
+        updateTest('cors', 'success', 'CORS funcionando!', time, response);
+        return true;
+      } else {
+        updateTest('cors', 'error', 'CORS com problemas', time, response);
+        return false;
+      }
+    } catch (error: any) {
+      const time = Date.now() - start;
+      updateTest('cors', 'error', `Erro CORS: ${error.message}`, time, error);
       return false;
     }
   };
@@ -173,6 +197,7 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
     // Reset tests
     setTests({
       connection: { status: 'waiting', message: '', time: 0 },
+      cors: { status: 'waiting', message: '', time: 0 },
       register: { status: 'waiting', message: '', time: 0 },
       login: { status: 'waiting', message: '', time: 0 },
     });
@@ -194,17 +219,21 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
         return;
       }
 
-      // Aguardar um pouco entre testes
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Teste 2: Registro
+      // Teste 2: CORS
+      console.log('🧪 Iniciando teste de CORS...');
+      await testCORS();
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Teste 3: Registro
       console.log('🧪 Iniciando teste de registro...');
       const registerOk = await testRegister();
       
-      // Aguardar um pouco entre testes
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Teste 3: Login (mesmo se registro falhou, tenta login)
+      // Teste 4: Login (mesmo se registro falhou, tenta login)
       console.log('🧪 Iniciando teste de login...');
       await testLogin();
 
@@ -240,6 +269,19 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
     Alert.alert('📋 Copiado', 'Resultados dos testes copiados para a área de transferência');
   };
 
+  const copyDebugInfo = () => {
+    const debugInfo = {
+      platform: Platform.OS,
+      apiInfo,
+      tests,
+      networkLogs: networkLogs.slice(-10), // Últimos 10 logs
+      timestamp: new Date().toISOString()
+    };
+    
+    Clipboard.setString(JSON.stringify(debugInfo, null, 2));
+    Alert.alert('📋 Copiado', 'Informações de debug copiadas');
+  };
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'waiting': return 'ellipse-outline';
@@ -264,7 +306,7 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
     <View style={[styles.container, { backgroundColor: themeConfig.colors.background }]}>
       <View style={[styles.header, { backgroundColor: themeConfig.colors.card, borderBottomColor: themeConfig.colors.border }]}>
         <Text style={[styles.title, { color: themeConfig.colors.text }]}>
-          🔧 Debug Panel
+          🔧 Debug Panel - Android
         </Text>
         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
           <Ionicons name="close" size={24} color={themeConfig.colors.text} />
@@ -279,6 +321,9 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
           </Text>
           <Text style={[styles.infoText, { color: themeConfig.colors.textSecondary }]}>
             URL Base: {apiInfo?.baseURL}
+          </Text>
+          <Text style={[styles.infoText, { color: themeConfig.colors.textSecondary }]}>
+            Plataforma: {apiInfo?.platform} (Android Emulator)
           </Text>
           <Text style={[styles.infoText, { color: themeConfig.colors.textSecondary }]}>
             Status de Rede: {apiInfo?.isOnline ? '🟢 Online' : '🔴 Offline'}
@@ -349,6 +394,7 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
                 />
                 <Text style={[styles.testName, { color: themeConfig.colors.text }]}>
                   {testName === 'connection' ? '🔗 Conexão' : 
+                   testName === 'cors' ? '🌐 CORS' :
                    testName === 'register' ? '📝 Registro' : 
                    '🔐 Login'}
                 </Text>
@@ -406,16 +452,8 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
               style={styles.individualButton}
             />
             <Button
-              title="📝 Registro"
-              onPress={testRegister}
-              disabled={isRunning}
-              variant="outline"
-              size="small"
-              style={styles.individualButton}
-            />
-            <Button
-              title="🔐 Login"
-              onPress={testLogin}
+              title="🌐 CORS"
+              onPress={testCORS}
               disabled={isRunning}
               variant="outline"
               size="small"
@@ -432,8 +470,8 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
               style={styles.utilityButton}
             />
             <Button
-              title="📋 Copiar Logs"
-              onPress={copyLogs}
+              title="📋 Copiar Debug"
+              onPress={copyDebugInfo}
               variant="ghost"
               size="small"
               style={styles.utilityButton}
@@ -447,14 +485,22 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
             <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
               📊 Logs de Rede ({networkLogs.length})
             </Text>
-            <TouchableOpacity 
-              onPress={() => setNetworkLogs([])}
-              style={styles.clearButton}
-            >
-              <Text style={[styles.clearText, { color: themeConfig.colors.error }]}>
-                Limpar
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.logsActions}>
+              <TouchableOpacity 
+                onPress={copyLogs}
+                style={styles.logAction}
+              >
+                <Ionicons name="copy" size={16} color={themeConfig.colors.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={() => setNetworkLogs([])}
+                style={styles.logAction}
+              >
+                <Text style={[styles.clearText, { color: themeConfig.colors.error }]}>
+                  Limpar
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
           
           <ScrollView 
@@ -485,25 +531,25 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
           </ScrollView>
         </Card>
 
-        {/* Ajuda */}
+        {/* Guia Android */}
         <Card style={styles.helpCard}>
           <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-            💡 Problemas Comuns
+            📱 Guia Android Emulator
           </Text>
           <Text style={[styles.helpText, { color: themeConfig.colors.textSecondary }]}>
-            • Backend não está rodando: npm run dev na pasta da API
+            • URL correta: http://10.0.2.2:3000/api
           </Text>
           <Text style={[styles.helpText, { color: themeConfig.colors.textSecondary }]}>
-            • MongoDB não conectado: verifique MONGODB_URI no .env
+            • Backend deve estar em localhost:3000
           </Text>
           <Text style={[styles.helpText, { color: themeConfig.colors.textSecondary }]}>
-            • Firewall bloqueando: libere porta 3000
+            • Verificar network_security_config.xml
           </Text>
           <Text style={[styles.helpText, { color: themeConfig.colors.textSecondary }]}>
-            • Erro CORS: verifique FRONTEND_URL no backend
+            • CORS configurado para 10.0.2.2
           </Text>
           <Text style={[styles.helpText, { color: themeConfig.colors.textSecondary }]}>
-            • JWT Secret: execute npm run jwt:generate
+            • Reiniciar app após mudanças de rede
           </Text>
         </Card>
       </ScrollView>
@@ -524,7 +570,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   title: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
   },
   closeButton: {
@@ -623,7 +669,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  clearButton: {
+  logsActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  logAction: {
     padding: 4,
   },
   clearText: {
