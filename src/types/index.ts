@@ -285,3 +285,7 @@ export interface GoalForm {
   priority: 'low' | 'medium' | 'high';
   color: string;
 }
+
+export interface Props {
+  navigation: any; // ou o tipo específico da navegação
+}

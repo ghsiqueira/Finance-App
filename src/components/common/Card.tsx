@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ViewStyle,
   TouchableOpacityProps,
+  StyleProp,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useThemeStore } from '../../store/themeStore';
@@ -18,7 +19,7 @@ interface CardProps extends TouchableOpacityProps {
   margin?: 'none' | 'small' | 'medium' | 'large';
   borderRadius?: 'small' | 'medium' | 'large' | 'full';
   gradient?: readonly [string, string, ...string[]];
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   onPress?: () => void;
   disabled?: boolean;
 }
