@@ -6,11 +6,13 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
+  Share,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { format, subMonths, subWeeks } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 import Header from '../../components/common/Header';
@@ -33,70 +35,112 @@ type Props = MainStackScreenProps<'Reports'>;
 
 type PeriodType = 'week' | 'month' | 'quarter' | 'year';
 
+// Tipos para os dados de estatísticas
+type MonthlyEvolutionItem = {
+  year: number;
+  month: number;
+  income: number;
+  expense: number;
+};
+
+type TransactionStatsSummary = {
+  income: number;
+  expense: number;
+  balance: number;
+  incomeCount: number;
+  expenseCount: number;
+  totalTransactions: number;
+  averageTransaction?: number;
+  highestExpense?: number;
+  highestIncome?: number;
+};
+
+type TransactionStats = {
+  summary: TransactionStatsSummary;
+  monthlyEvolution?: MonthlyEvolutionItem[];
+};
+
+type CategoryStat = {
+  category: {
+    name: string;
+    color: string;
+    type: string;
+  };
+  total: number;
+};
+
+type CategoryStats = {
+  stats: CategoryStat[];
+};
+
 export default function ReportsScreen({ navigation }: Props) {
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodType>('month');
   const { theme } = useThemeStore();
   const themeConfig = getTheme(theme);
 
-  const periods = [
-    { key: 'week', label: 'Semana', icon: 'calendar-outline' },
-    { key: 'month', label: 'Mês', icon: 'calendar-outline' },
-    { key: 'quarter', label: 'Trimestre', icon: 'calendar-outline' },
-    { key: 'year', label: 'Ano', icon: 'calendar-outline' },
-  ];
-
+  // Calculate date ranges based on selected period
   const getDateRange = () => {
     const now = new Date();
     let startDate: Date;
-    let endDate: Date;
+    let endDate: Date = now;
 
     switch (selectedPeriod) {
       case 'week':
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        endDate = now;
+        startDate = subWeeks(now, 1);
         break;
       case 'quarter':
-        startDate = subMonths(startOfMonth(now), 3);
-        endDate = endOfMonth(now);
+        startDate = subMonths(now, 3);
         break;
       case 'year':
-        startDate = new Date(now.getFullYear(), 0, 1);
-        endDate = new Date(now.getFullYear(), 11, 31);
+        startDate = subMonths(now, 12);
         break;
-      default: 
-        startDate = startOfMonth(now);
-        endDate = endOfMonth(now);
+      default: // month
+        startDate = subMonths(now, 1);
+        break;
     }
 
-    return {
-      startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
-    };
+    return { startDate, endDate };
   };
 
   const { startDate, endDate } = getDateRange();
 
+  // Fetch transaction statistics
   const { data: statsResponse, isLoading: statsLoading } = useQuery({
-    queryKey: ['transaction-stats', startDate, endDate],
-    queryFn: () => transactionService.getStats(startDate, endDate),
+    queryKey: ['transaction-stats', selectedPeriod, startDate, endDate],
+    // Corrigido: espera dois parâmetros string
+    queryFn: () => transactionService.getStats(
+      startDate.toISOString(),
+      endDate.toISOString()
+    ),
   });
 
+  // Fetch category statistics
   const { data: categoryStatsResponse, isLoading: categoryLoading } = useQuery({
-    queryKey: ['category-stats', startDate, endDate],
-    queryFn: () => categoryService.getCategoryStats(startDate, endDate),
+    queryKey: ['category-stats', selectedPeriod, startDate, endDate],
+    queryFn: () => categoryService.getCategoryStats(
+      startDate.toISOString(),
+      endDate.toISOString(),
+      'expense'
+    ),
   });
 
-  const stats = statsResponse?.data;
-  const categoryStats = categoryStatsResponse?.data;
+  const stats: TransactionStats | undefined = statsResponse?.data;
+  const categoryStats: CategoryStats | undefined = categoryStatsResponse?.data;
 
   const isLoading = statsLoading || categoryLoading;
 
   const prepareLineChartData = () => {
-    if (!stats) return { labels: [], datasets: [] };
+    if (!stats?.monthlyEvolution) {
+      return { labels: [], datasets: [] };
+    }
 
-    const labels = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun'];
-    const incomeData = [3000, 3200, 2800, 3500, 3100, 3300];
-    const expenseData = [2500, 2800, 2600, 2900, 2700, 2400];
+    const evolution = stats.monthlyEvolution.slice(-6); // Last 6 periods
+    const labels = evolution.map((item: MonthlyEvolutionItem) =>
+      format(new Date(item.year, item.month - 1), 'MMM', { locale: ptBR })
+    );
+
+    const incomeData = evolution.map((item: MonthlyEvolutionItem) => item.income);
+    const expenseData = evolution.map((item: MonthlyEvolutionItem) => item.expense);
 
     return {
       labels,
@@ -119,9 +163,9 @@ export default function ReportsScreen({ navigation }: Props) {
     if (!categoryStats?.stats) return [];
 
     return categoryStats.stats
-      .filter(stat => stat.category.type === 'expense')
+      .filter((stat: CategoryStat) => stat.category.type === 'expense')
       .slice(0, 6)
-      .map(stat => ({
+      .map((stat: CategoryStat) => ({
         name: stat.category.name,
         amount: stat.total,
         color: stat.category.color,
@@ -132,117 +176,250 @@ export default function ReportsScreen({ navigation }: Props) {
     if (!categoryStats?.stats) return { labels: [], datasets: [] };
 
     const topCategories = categoryStats.stats.slice(0, 5);
-    
+
     return {
-      labels: topCategories.map(stat => stat.category.name.substring(0, 8)),
+      labels: topCategories.map((stat: CategoryStat) => stat.category.name.substring(0, 8)),
       datasets: [
         {
-          data: topCategories.map(stat => stat.total),
+          data: topCategories.map((stat: CategoryStat) => stat.total),
         },
       ],
     };
   };
 
+  const handleShareReport = async () => {
+    if (!stats) return;
+
+    const periodLabel = {
+      week: 'Semana',
+      month: 'Mês',
+      quarter: 'Trimestre',
+      year: 'Ano',
+    }[selectedPeriod];
+
+    const reportText = `
+📊 RELATÓRIO FINANCEIRO - ${periodLabel.toUpperCase()}
+📅 Período: ${format(startDate, 'dd/MM/yyyy')} - ${format(endDate, 'dd/MM/yyyy')}
+
+💰 RESUMO:
+• Receitas: ${formatCurrency(stats.summary?.income || 0)}
+• Gastos: ${formatCurrency(stats.summary?.expense || 0)}
+• Saldo: ${formatCurrency(stats.summary?.balance || 0)}
+
+📈 ESTATÍSTICAS:
+• Total de transações: ${stats.summary?.totalTransactions || 0}
+• Ticket médio: ${formatCurrency(stats.summary?.averageTransaction || 0)}
+• Maior gasto: ${formatCurrency(stats.summary?.highestExpense || 0)}
+• Maior receita: ${formatCurrency(stats.summary?.highestIncome || 0)}
+
+🏷️ TOP 3 CATEGORIAS:
+${categoryStats?.stats?.slice(0, 3).map((stat: CategoryStat, index: number) =>
+      `${index + 1}. ${stat.category.name}: ${formatCurrency(stat.total)}`
+    ).join('\n') || 'Nenhuma categoria encontrada'}
+
+Gerado pelo Finance App
+    `.trim();
+
+    try {
+      await Share.share({
+        message: reportText,
+        title: `Relatório Financeiro - ${periodLabel}`,
+      });
+    } catch (error) {
+      console.log('Error sharing:', error);
+    }
+  };
+
+  const renderPeriodButton = (period: PeriodType, label: string) => (
+    <TouchableOpacity
+      key={period}
+      style={[
+        styles.periodButton,
+        {
+          backgroundColor: selectedPeriod === period
+            ? themeConfig.colors.primary
+            : themeConfig.colors.card,
+          borderColor: selectedPeriod === period
+            ? themeConfig.colors.primary
+            : themeConfig.colors.border,
+        }
+      ]}
+      onPress={() => setSelectedPeriod(period)}
+    >
+      <Text style={[
+        styles.periodButtonText,
+        {
+          color: selectedPeriod === period
+            ? '#ffffff'
+            : themeConfig.colors.text
+        }
+      ]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  const renderSummaryCard = () => (
+    <Card variant="elevated" style={styles.summaryCard}>
+      <View style={styles.summaryHeader}>
+        <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
+          Resumo Financeiro
+        </Text>
+        <Text style={[styles.periodText, { color: themeConfig.colors.textSecondary }]}>
+          {format(startDate, 'dd/MM')} - {format(endDate, 'dd/MM/yyyy')}
+        </Text>
+      </View>
+
+      <View style={styles.summaryGrid}>
+        <View style={styles.summaryItem}>
+          <View style={[styles.summaryIcon, { backgroundColor: themeConfig.colors.success + '20' }]}>
+            <Ionicons name="trending-up" size={24} color={themeConfig.colors.success} />
+          </View>
+          <Text style={[styles.summaryLabel, { color: themeConfig.colors.textSecondary }]}>
+            Receitas
+          </Text>
+          <Text style={[styles.summaryValue, { color: themeConfig.colors.success }]}>
+            {formatCurrency(stats?.summary?.income || 0)}
+          </Text>
+        </View>
+
+        <View style={styles.summaryItem}>
+          <View style={[styles.summaryIcon, { backgroundColor: themeConfig.colors.error + '20' }]}>
+            <Ionicons name="trending-down" size={24} color={themeConfig.colors.error} />
+          </View>
+          <Text style={[styles.summaryLabel, { color: themeConfig.colors.textSecondary }]}>
+            Gastos
+          </Text>
+          <Text style={[styles.summaryValue, { color: themeConfig.colors.error }]}>
+            {formatCurrency(stats?.summary?.expense || 0)}
+          </Text>
+        </View>
+
+        <View style={styles.summaryItem}>
+          <View style={[styles.summaryIcon, {
+            backgroundColor: (stats?.summary?.balance || 0) >= 0
+              ? themeConfig.colors.primary + '20'
+              : themeConfig.colors.error + '20'
+          }]}>
+            <Ionicons
+              name={(stats?.summary?.balance || 0) >= 0 ? "trending-up" : "trending-down"}
+              size={24}
+              color={(stats?.summary?.balance || 0) >= 0 ? themeConfig.colors.primary : themeConfig.colors.error}
+            />
+          </View>
+          <Text style={[styles.summaryLabel, { color: themeConfig.colors.textSecondary }]}>
+            Saldo
+          </Text>
+          <Text style={[
+            styles.summaryValue,
+            {
+              color: (stats?.summary?.balance || 0) >= 0
+                ? themeConfig.colors.primary
+                : themeConfig.colors.error
+            }
+          ]}>
+            {formatCurrency(stats?.summary?.balance || 0)}
+          </Text>
+        </View>
+      </View>
+    </Card>
+  );
+
+  const renderTransactionStats = () => (
+    <Card variant="elevated" style={styles.statsCard}>
+      <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
+        Estatísticas de Transações
+      </Text>
+
+      <View style={styles.statsList}>
+        <View style={styles.statItem}>
+          <Text style={[styles.statLabel, { color: themeConfig.colors.textSecondary }]}>
+            Total de Transações
+          </Text>
+          <Text style={[styles.statValue, { color: themeConfig.colors.text }]}>
+            {stats?.summary?.totalTransactions || 0}
+          </Text>
+        </View>
+
+        <View style={styles.statItem}>
+          <Text style={[styles.statLabel, { color: themeConfig.colors.textSecondary }]}>
+            Ticket Médio
+          </Text>
+          <Text style={[styles.statValue, { color: themeConfig.colors.text }]}>
+            {formatCurrency(stats?.summary?.averageTransaction || 0)}
+          </Text>
+        </View>
+
+        <View style={styles.statItem}>
+          <Text style={[styles.statLabel, { color: themeConfig.colors.textSecondary }]}>
+            Maior Receita
+          </Text>
+          <Text style={[styles.statValue, { color: themeConfig.colors.success }]}>
+            {formatCurrency(stats?.summary?.highestIncome || 0)}
+          </Text>
+        </View>
+
+        <View style={styles.statItem}>
+          <Text style={[styles.statLabel, { color: themeConfig.colors.textSecondary }]}>
+            Maior Gasto
+          </Text>
+          <Text style={[styles.statValue, { color: themeConfig.colors.error }]}>
+            {formatCurrency(stats?.summary?.highestExpense || 0)}
+          </Text>
+        </View>
+
+        <View style={styles.statItem}>
+          <Text style={[styles.statLabel, { color: themeConfig.colors.textSecondary }]}>
+            Economia Média Diária
+          </Text>
+          <Text style={[styles.statValue, { color: themeConfig.colors.primary }]}>
+            {formatCurrency((stats?.summary?.balance || 0) / 30)}
+          </Text>
+        </View>
+
+        <View style={styles.statItem}>
+          <Text style={[styles.statLabel, { color: themeConfig.colors.textSecondary }]}>
+            Categorias Utilizadas
+          </Text>
+          <Text style={[styles.statValue, { color: themeConfig.colors.text }]}>
+            {categoryStats?.stats?.length || 0}
+          </Text>
+        </View>
+      </View>
+    </Card>
+  );
+
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: themeConfig.colors.background }]}>
         <Header title="Relatórios" showBackButton onBackPress={() => navigation.goBack()} />
-        <Loading message="Carregando relatórios..." />
+        <Loading />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: themeConfig.colors.background }]}>
-      <Header title="Relatórios" showBackButton onBackPress={() => navigation.goBack()} />
+      <Header
+        title="Relatórios"
+        showBackButton
+        onBackPress={() => navigation.goBack()}
+      />
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Seletor de Período */}
-        <Card style={styles.periodCard}>
-          <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-            Período do Relatório
-          </Text>
-          <View style={styles.periodSelector}>
-            {periods.map((period) => (
-              <TouchableOpacity
-                key={period.key}
-                style={[
-                  styles.periodButton,
-                  selectedPeriod === period.key && styles.periodButtonActive,
-                  selectedPeriod === period.key && {
-                    backgroundColor: themeConfig.colors.primary + '20',
-                    borderColor: themeConfig.colors.primary,
-                  }
-                ]}
-                onPress={() => setSelectedPeriod(period.key as PeriodType)}
-              >
-                <Ionicons
-                  name={period.icon as any}
-                  size={16}
-                  color={selectedPeriod === period.key ? themeConfig.colors.primary : themeConfig.colors.textSecondary}
-                />
-                <Text style={[
-                  styles.periodButtonText,
-                  {
-                    color: selectedPeriod === period.key ? themeConfig.colors.primary : themeConfig.colors.textSecondary
-                  }
-                ]}>
-                  {period.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </Card>
+        {/* Period Selection */}
+        <View style={styles.periodContainer}>
+          {renderPeriodButton('week', 'Semana')}
+          {renderPeriodButton('month', 'Mês')}
+          {renderPeriodButton('quarter', 'Trimestre')}
+          {renderPeriodButton('year', 'Ano')}
+        </View>
 
-        {/* Resumo Financeiro */}
-        <Card style={styles.summaryCard}>
-          <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-            Resumo Financeiro
-          </Text>
-          <View style={styles.summaryGrid}>
-            <View style={styles.summaryItem}>
-              <View style={[styles.summaryIcon, { backgroundColor: themeConfig.colors.success + '20' }]}>
-                <Ionicons name="trending-up" size={24} color={themeConfig.colors.success} />
-              </View>
-              <Text style={[styles.summaryLabel, { color: themeConfig.colors.textSecondary }]}>
-                Receitas
-              </Text>
-              <Text style={[styles.summaryValue, { color: themeConfig.colors.success }]}>
-                {formatCurrency(stats?.summary.income || 0)}
-              </Text>
-            </View>
+        {/* Summary Card */}
+        {renderSummaryCard()}
 
-            <View style={styles.summaryItem}>
-              <View style={[styles.summaryIcon, { backgroundColor: themeConfig.colors.error + '20' }]}>
-                <Ionicons name="trending-down" size={24} color={themeConfig.colors.error} />
-              </View>
-              <Text style={[styles.summaryLabel, { color: themeConfig.colors.textSecondary }]}>
-                Gastos
-              </Text>
-              <Text style={[styles.summaryValue, { color: themeConfig.colors.error }]}>
-                {formatCurrency(stats?.summary.expense || 0)}
-              </Text>
-            </View>
-
-            <View style={styles.summaryItem}>
-              <View style={[styles.summaryIcon, { backgroundColor: themeConfig.colors.primary + '20' }]}>
-                <Ionicons name="wallet" size={24} color={themeConfig.colors.primary} />
-              </View>
-              <Text style={[styles.summaryLabel, { color: themeConfig.colors.textSecondary }]}>
-                Saldo
-              </Text>
-              <Text style={[
-                styles.summaryValue,
-                { color: (stats?.summary.balance || 0) >= 0 ? themeConfig.colors.success : themeConfig.colors.error }
-              ]}>
-                {formatCurrency(stats?.summary.balance || 0)}
-              </Text>
-            </View>
-          </View>
-        </Card>
-
-        {/* Gráfico de Evolução */}
-        <Card style={styles.chartCard}>
+        {/* Evolution Chart */}
+        <Card variant="elevated" style={styles.chartCard}>
           <LineChart
             data={prepareLineChartData()}
             title="Evolução de Receitas e Gastos"
@@ -251,9 +428,9 @@ export default function ReportsScreen({ navigation }: Props) {
           />
         </Card>
 
-        {/* Gastos por Categoria - Gráfico de Pizza */}
+        {/* Category Spending - Pie Chart */}
         {preparePieChartData().length > 0 && (
-          <Card style={styles.chartCard}>
+          <Card variant="elevated" style={styles.chartCard}>
             <PieChart
               data={preparePieChartData()}
               title="Gastos por Categoria"
@@ -262,9 +439,9 @@ export default function ReportsScreen({ navigation }: Props) {
           </Card>
         )}
 
-        {/* Top Categorias - Gráfico de Barras */}
+        {/* Top Categories - Bar Chart */}
         {prepareBarChartData().labels.length > 0 && (
-          <Card style={styles.chartCard}>
+          <Card variant="elevated" style={styles.chartCard}>
             <BarChart
               data={prepareBarChartData()}
               title="Top 5 Categorias"
@@ -275,81 +452,51 @@ export default function ReportsScreen({ navigation }: Props) {
           </Card>
         )}
 
-        {/* Estatísticas Detalhadas */}
-        <Card style={styles.statsCard}>
+        {/* Transaction Statistics */}
+        {renderTransactionStats()}
+
+        {/* Actions Card */}
+        <Card variant="elevated" style={styles.actionsCard}>
           <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-            Estatísticas Detalhadas
+            Ações Rápidas
           </Text>
-          
-          <View style={styles.statsList}>
-            <View style={styles.statItem}>
-              <Text style={[styles.statLabel, { color: themeConfig.colors.textSecondary }]}>
-                Total de Transações
-              </Text>
-              <Text style={[styles.statValue, { color: themeConfig.colors.text }]}>
-                {stats?.summary.totalTransactions || 0}
-              </Text>
-            </View>
 
-            <View style={styles.statItem}>
-              <Text style={[styles.statLabel, { color: themeConfig.colors.textSecondary }]}>
-                Média de Gastos por Dia
-              </Text>
-              <Text style={[styles.statValue, { color: themeConfig.colors.text }]}>
-                {formatCurrency((stats?.summary.expense || 0) / 30)}
-              </Text>
-            </View>
-
-            <View style={styles.statItem}>
-              <Text style={[styles.statLabel, { color: themeConfig.colors.textSecondary }]}>
-                Maior Gasto
-              </Text>
-              <Text style={[styles.statValue, { color: themeConfig.colors.error }]}>
-                {formatCurrency(Math.max(...(categoryStats?.stats.map(s => s.total) || [0])))}
-              </Text>
-            </View>
-
-            <View style={styles.statItem}>
-              <Text style={[styles.statLabel, { color: themeConfig.colors.textSecondary }]}>
-                Categoria Mais Usada
-              </Text>
-              <Text style={[styles.statValue, { color: themeConfig.colors.text }]}>
-                {categoryStats?.stats[0]?.category.name || 'N/A'}
-              </Text>
-            </View>
-          </View>
-        </Card>
-
-        {/* Ações */}
-        <Card style={styles.actionsCard}>
-          <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-            Ações
-          </Text>
-          
           <View style={styles.actionsList}>
             <Button
-              title="Exportar Relatório"
+              title="Compartilhar Relatório"
+              onPress={handleShareReport}
               variant="outline"
-              leftIcon={<Ionicons name="download-outline" size={20} color={themeConfig.colors.primary} />}
-              onPress={() => {
-                alert('Exportação será implementada em breve');
-              }}
-              fullWidth
               style={styles.actionButton}
+              leftIcon={<Ionicons name="share-outline" size={16} color={themeConfig.colors.primary} />}
             />
 
             <Button
-              title="Compartilhar"
-              variant="outline"
-              leftIcon={<Ionicons name="share-outline" size={20} color={themeConfig.colors.primary} />}
+              title="Exportar Dados"
               onPress={() => {
-                alert('Compartilhamento será implementado em breve');
+                // TODO: Implement export functionality
+                Alert.alert('Info', 'Funcionalidade de exportação será implementada em breve');
               }}
-              fullWidth
+              variant="outline"
               style={styles.actionButton}
+              leftIcon={<Ionicons name="download-outline" size={16} color={themeConfig.colors.primary} />}
+            />
+
+            <Button
+              title="Ver Transações"
+              onPress={() =>
+                navigation.navigate({
+                  name: 'MainTabs',
+                  params: { screen: 'Transactions' },
+                })
+              }
+              variant="outline"
+              style={styles.actionButton}
+              leftIcon={<Ionicons name="list-outline" size={16} color={themeConfig.colors.primary} />}
             />
           </View>
         </Card>
+
+        <View style={styles.bottomSpacer} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -361,36 +508,20 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 16,
+    padding: 16,
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 16,
-  },
-  periodCard: {
-    marginBottom: 16,
-    marginTop: 8,
-  },
-  periodSelector: {
+  periodContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
+    marginBottom: 16,
   },
   periodButton: {
-    flexDirection: 'row',
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    gap: 6,
-    minWidth: '22%',
-    justifyContent: 'center',
-  },
-  periodButtonActive: {
-    borderWidth: 2,
   },
   periodButtonText: {
     fontSize: 12,
@@ -399,31 +530,42 @@ const styles = StyleSheet.create({
   summaryCard: {
     marginBottom: 16,
   },
+  summaryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  periodText: {
+    fontSize: 12,
+  },
   summaryGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
   },
   summaryItem: {
-    flex: 1,
     alignItems: 'center',
-    gap: 8,
+    flex: 1,
   },
   summaryIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   summaryLabel: {
     fontSize: 12,
-    textAlign: 'center',
+    marginBottom: 4,
   },
   summaryValue: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
-    textAlign: 'center',
   },
   chartCard: {
     marginBottom: 16,
@@ -432,28 +574,31 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   statsList: {
-    gap: 16,
+    gap: 12,
   },
   statItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 8,
   },
   statLabel: {
     fontSize: 14,
-    flex: 1,
   },
   statValue: {
     fontSize: 14,
     fontWeight: '600',
   },
   actionsCard: {
-    marginBottom: 24,
+    marginBottom: 16,
   },
   actionsList: {
     gap: 12,
   },
   actionButton: {
-    marginBottom: 0,
+    marginBottom: 8,
+  },
+  bottomSpacer: {
+    height: 24,
   },
 });

@@ -35,16 +35,26 @@ const profileFormSchema = yup.object().shape({
   currency: yup.string().required('Moeda obrigatória'),
 });
 
+const CURRENCIES = [
+  { value: 'BRL', label: 'Real Brasileiro (R$)' },
+  { value: 'USD', label: 'Dólar Americano ($)' },
+  { value: 'EUR', label: 'Euro (€)' },
+  { value: 'GBP', label: 'Libra Esterlina (£)' },
+];
+
 export default function EditProfileScreen({ navigation }: Props) {
   const { user, updateUser } = useAuthStore();
   const { theme } = useThemeStore();
   const themeConfig = getTheme(theme);
   const [isLoading, setIsLoading] = useState(false);
+  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
 
   const {
     control,
     handleSubmit,
     formState: { errors, isDirty },
+    watch,
+    setValue,
   } = useForm<ProfileForm>({
     resolver: yupResolver(profileFormSchema),
     defaultValues: {
@@ -53,6 +63,8 @@ export default function EditProfileScreen({ navigation }: Props) {
       currency: user?.currency || 'BRL',
     },
   });
+
+  const selectedCurrency = watch('currency');
 
   const onSubmit = async (data: ProfileForm) => {
     setIsLoading(true);
@@ -66,6 +78,53 @@ export default function EditProfileScreen({ navigation }: Props) {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleCurrencySelect = (currency: string) => {
+    setValue('currency', currency, { shouldDirty: true });
+    setShowCurrencyPicker(false);
+  };
+
+  const renderCurrencyPicker = () => {
+    if (!showCurrencyPicker) return null;
+
+    return (
+      <Card style={styles.currencyPicker}>
+        <Text style={[styles.currencyPickerTitle, { color: themeConfig.colors.text }]}>
+          Selecione a Moeda
+        </Text>
+        {CURRENCIES.map((currency) => (
+          <TouchableOpacity
+            key={currency.value}
+            style={[
+              styles.currencyOption,
+              selectedCurrency === currency.value && {
+                backgroundColor: themeConfig.colors.primary + '15'
+              }
+            ]}
+            onPress={() => handleCurrencySelect(currency.value)}
+          >
+            <Text style={[
+              styles.currencyOptionText,
+              { color: themeConfig.colors.text },
+              selectedCurrency === currency.value && {
+                color: themeConfig.colors.primary,
+                fontWeight: '600'
+              }
+            ]}>
+              {currency.label}
+            </Text>
+            {selectedCurrency === currency.value && (
+              <Ionicons 
+                name="checkmark" 
+                size={20} 
+                color={themeConfig.colors.primary} 
+              />
+            )}
+          </TouchableOpacity>
+        ))}
+      </Card>
+    );
   };
 
   return (
@@ -85,7 +144,10 @@ export default function EditProfileScreen({ navigation }: Props) {
                 {user?.name?.charAt(0)?.toUpperCase() || 'U'}
               </Text>
             </View>
-            <TouchableOpacity style={styles.changeAvatarButton}>
+            <TouchableOpacity 
+              style={styles.changeAvatarButton}
+              onPress={() => Alert.alert('Info', 'Alteração de foto será implementada em breve')}
+            >
               <Ionicons name="camera" size={20} color={themeConfig.colors.primary} />
               <Text style={[styles.changeAvatarText, { color: themeConfig.colors.primary }]}>
                 Alterar Foto
@@ -142,64 +204,60 @@ export default function EditProfileScreen({ navigation }: Props) {
             )}
           />
 
-          <Controller
-            name="currency"
-            control={control}
-            render={({ field: { onChange, onBlur, value } }) => (
-              <TouchableOpacity
-                style={[styles.currencySelector, { borderColor: themeConfig.colors.border }]}
-                onPress={() => Alert.alert('Info', 'Seletor de moeda será implementado em breve')}
-              >
+          <View style={styles.inputContainer}>
+            <Text style={[styles.inputLabel, { color: themeConfig.colors.text }]}>
+              Moeda Padrão
+            </Text>
+            <TouchableOpacity
+              style={[
+                styles.currencySelector,
+                { 
+                  backgroundColor: themeConfig.colors.surface,
+                  borderColor: themeConfig.colors.border
+                }
+              ]}
+              onPress={() => setShowCurrencyPicker(!showCurrencyPicker)}
+            >
+              <View style={styles.currencySelectorLeft}>
                 <Ionicons 
                   name="card-outline" 
                   size={20} 
                   color={themeConfig.colors.textSecondary} 
                 />
-                <Text style={[styles.currencyText, { color: themeConfig.colors.text }]}>
-                  {value} - Real Brasileiro
+                <Text style={[styles.currencySelectorText, { color: themeConfig.colors.text }]}>
+                  {CURRENCIES.find(c => c.value === selectedCurrency)?.label || 'Selecione...'}
                 </Text>
-                <Ionicons 
-                  name="chevron-down" 
-                  size={16} 
-                  color={themeConfig.colors.textSecondary} 
-                />
-              </TouchableOpacity>
-            )}
-          />
-        </Card>
-
-        {/* Verification Status */}
-        <Card style={styles.verificationCard}>
-          <View style={styles.verificationItem}>
-            <View style={styles.verificationLeft}>
+              </View>
               <Ionicons 
-                name={user?.isEmailVerified ? "checkmark-circle" : "warning"} 
+                name={showCurrencyPicker ? "chevron-up" : "chevron-down"} 
                 size={20} 
-                color={user?.isEmailVerified ? themeConfig.colors.success : themeConfig.colors.warning} 
+                color={themeConfig.colors.textSecondary} 
               />
-              <Text style={[styles.verificationText, { color: themeConfig.colors.text }]}>
-                Email {user?.isEmailVerified ? 'Verificado' : 'Não Verificado'}
+            </TouchableOpacity>
+            {errors.currency && (
+              <Text style={[styles.errorText, { color: themeConfig.colors.error }]}>
+                {errors.currency.message}
               </Text>
-            </View>
-            {!user?.isEmailVerified && (
-              <Button
-                title="Verificar"
-                size="small"
-                onPress={() => Alert.alert('Info', 'Verificação será implementada em breve')}
-              />
             )}
           </View>
+
+          {renderCurrencyPicker()}
         </Card>
 
-        {/* Save Button */}
-        <View style={styles.saveSection}>
+        {/* Actions */}
+        <View style={styles.actionsContainer}>
           <Button
             title="Salvar Alterações"
             onPress={handleSubmit(onSubmit)}
             loading={isLoading}
-            disabled={isLoading || !isDirty}
-            gradient
-            fullWidth
+            disabled={!isDirty}
+          />
+          
+          <Button
+            title="Cancelar"
+            variant="outline"
+            onPress={() => navigation.goBack()}
+            style={styles.cancelButton}
           />
         </View>
       </ScrollView>
@@ -215,80 +273,12 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 8,
-    marginTop: 24,
-    marginLeft: 4,
-    letterSpacing: 0.5,
-  },
-  menuCard: {
-    padding: 0,
-    marginBottom: 8,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  menuItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  menuItemIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  menuItemText: {
-    flex: 1,
-  },
-  menuItemTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 2,
-  },
-  menuItemSubtitle: {
-    fontSize: 12,
-  },
-  menuItemRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  menuDivider: {
-    height: 1,
-    marginLeft: 68,
-  },
-  logoutSection: {
-    marginTop: 32,
-    marginBottom: 16,
-  },
-  logoutButton: {
-    borderWidth: 2,
-  },
-  footer: {
-    alignItems: 'center',
-    paddingVertical: 20,
-  },
-  footerText: {
-    fontSize: 12,
-  },
-
   avatarCard: {
-    marginBottom: 16,
+    marginBottom: 24,
   },
   avatarSection: {
     alignItems: 'center',
-    padding: 20,
+    paddingVertical: 8,
   },
   avatar: {
     width: 80,
@@ -296,10 +286,10 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   avatarText: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: 'bold',
     color: '#ffffff',
   },
@@ -307,46 +297,73 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
   },
   changeAvatarText: {
     fontSize: 14,
     fontWeight: '500',
   },
   formCard: {
+    marginBottom: 24,
+  },
+  inputContainer: {
     marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
   },
   currencySelector: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     padding: 16,
-    borderWidth: 1,
     borderRadius: 8,
+    borderWidth: 1,
+    minHeight: 56,
+  },
+  currencySelectorLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
-    marginTop: 16,
-  },
-  currencyText: {
     flex: 1,
+  },
+  currencySelectorText: {
     fontSize: 16,
+    flex: 1,
   },
-  verificationCard: {
-    marginBottom: 24,
+  errorText: {
+    fontSize: 12,
+    marginTop: 4,
   },
-  verificationItem: {
+  currencyPicker: {
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  currencyPickerTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  currencyOption: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 4,
   },
-  verificationLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  currencyOptionText: {
+    fontSize: 14,
+    flex: 1,
+  },
+  actionsContainer: {
     gap: 12,
+    paddingBottom: 32,
   },
-  verificationText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  saveSection: {
-    marginBottom: 32,
+  cancelButton: {
+    marginTop: 8,
   },
 });

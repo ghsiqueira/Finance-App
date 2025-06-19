@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Button from './Button';
 import { useThemeStore } from '../../store/themeStore';
@@ -12,6 +12,9 @@ interface EmptyStateProps {
   buttonTitle?: string;
   onButtonPress?: () => void;
   buttonVariant?: 'primary' | 'secondary' | 'outline';
+  size?: 'small' | 'medium' | 'large';
+  illustration?: any; // For custom illustrations
+  style?: any;
 }
 
 export default function EmptyState({
@@ -21,24 +24,95 @@ export default function EmptyState({
   buttonTitle,
   onButtonPress,
   buttonVariant = 'primary',
+  size = 'medium',
+  illustration,
+  style,
 }: EmptyStateProps) {
   const { theme } = useThemeStore();
   const themeConfig = getTheme(theme);
 
+  const sizeConfig = {
+    small: {
+      container: { padding: 24 },
+      iconSize: 32,
+      iconContainer: { width: 64, height: 64, borderRadius: 32 },
+      titleSize: 16,
+      descriptionSize: 14,
+      spacing: { icon: 16, title: 6, description: 20 },
+    },
+    medium: {
+      container: { padding: 40 },
+      iconSize: 48,
+      iconContainer: { width: 96, height: 96, borderRadius: 48 },
+      titleSize: 20,
+      descriptionSize: 16,
+      spacing: { icon: 24, title: 8, description: 32 },
+    },
+    large: {
+      container: { padding: 48 },
+      iconSize: 64,
+      iconContainer: { width: 128, height: 128, borderRadius: 64 },
+      titleSize: 24,
+      descriptionSize: 18,
+      spacing: { icon: 32, title: 12, description: 40 },
+    },
+  };
+
+  const config = sizeConfig[size];
+
   return (
-    <View style={styles.container}>
-      <View style={[styles.iconContainer, { backgroundColor: themeConfig.colors.surface }]}>
-        <Ionicons name={icon as any} size={48} color={themeConfig.colors.textLight} />
-      </View>
+    <View style={[styles.container, config.container, style]}>
+      {/* Icon or Illustration */}
+      {illustration ? (
+        <View style={[styles.illustrationContainer, { marginBottom: config.spacing.icon }]}>
+          <Image 
+            source={illustration} 
+            style={[styles.illustration, config.iconContainer]}
+            resizeMode="contain"
+          />
+        </View>
+      ) : (
+        <View style={[
+          styles.iconContainer, 
+          config.iconContainer,
+          { 
+            backgroundColor: themeConfig.colors.surface,
+            marginBottom: config.spacing.icon 
+          }
+        ]}>
+          <Ionicons 
+            name={icon as any} 
+            size={config.iconSize} 
+            color={themeConfig.colors.textLight} 
+          />
+        </View>
+      )}
       
-      <Text style={[styles.title, { color: themeConfig.colors.text }]}>
+      {/* Title */}
+      <Text style={[
+        styles.title, 
+        { 
+          color: themeConfig.colors.text,
+          fontSize: config.titleSize,
+          marginBottom: config.spacing.title 
+        }
+      ]}>
         {title}
       </Text>
       
-      <Text style={[styles.description, { color: themeConfig.colors.textSecondary }]}>
+      {/* Description */}
+      <Text style={[
+        styles.description, 
+        { 
+          color: themeConfig.colors.textSecondary,
+          fontSize: config.descriptionSize,
+          marginBottom: config.spacing.description 
+        }
+      ]}>
         {description}
       </Text>
       
+      {/* Action Button */}
       {buttonTitle && onButtonPress && (
         <Button
           title={buttonTitle}
@@ -51,126 +125,106 @@ export default function EmptyState({
   );
 }
 
+// Predefined EmptyState variants for common use cases
+export const TransactionsEmptyState = (props: Partial<EmptyStateProps>) => (
+  <EmptyState
+    icon="receipt-outline"
+    title="Nenhuma transação encontrada"
+    description="Comece adicionando sua primeira transação para acompanhar suas finanças"
+    buttonTitle="Adicionar Transação"
+    {...props}
+  />
+);
+
+export const BudgetsEmptyState = (props: Partial<EmptyStateProps>) => (
+  <EmptyState
+    icon="wallet-outline"
+    title="Nenhum orçamento criado"
+    description="Crie orçamentos para controlar seus gastos por categoria"
+    buttonTitle="Criar Orçamento"
+    {...props}
+  />
+);
+
+export const GoalsEmptyState = (props: Partial<EmptyStateProps>) => (
+  <EmptyState
+    icon="flag-outline"
+    title="Nenhuma meta definida"
+    description="Defina metas financeiras para alcançar seus objetivos"
+    buttonTitle="Criar Meta"
+    {...props}
+  />
+);
+
+export const CategoriesEmptyState = (props: Partial<EmptyStateProps>) => (
+  <EmptyState
+    icon="folder-outline"
+    title="Nenhuma categoria encontrada"
+    description="Organize suas transações criando categorias personalizadas"
+    buttonTitle="Criar Categoria"
+    size="small"
+    {...props}
+  />
+);
+
+export const SearchEmptyState = (props: Partial<EmptyStateProps>) => (
+  <EmptyState
+    icon="search-outline"
+    title="Nenhum resultado encontrado"
+    description="Tente ajustar os filtros ou termos de busca"
+    size="small"
+    {...props}
+  />
+);
+
+export const NetworkErrorState = (props: Partial<EmptyStateProps>) => (
+  <EmptyState
+    icon="cloud-offline-outline"
+    title="Erro de conexão"
+    description="Verifique sua conexão com a internet e tente novamente"
+    buttonTitle="Tentar Novamente"
+    buttonVariant="outline"
+    {...props}
+  />
+);
+
+export const LoadingErrorState = (props: Partial<EmptyStateProps>) => (
+  <EmptyState
+    icon="alert-circle-outline"
+    title="Erro ao carregar dados"
+    description="Ocorreu um erro inesperado. Tente novamente em alguns instantes"
+    buttonTitle="Recarregar"
+    buttonVariant="outline"
+    {...props}
+  />
+);
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 40,
   },
   iconContainer: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
+  },
+  illustrationContainer: {
+    alignItems: 'center',
+  },
+  illustration: {
+    opacity: 0.8,
   },
   title: {
-    fontSize: 20,
     fontWeight: '600',
     textAlign: 'center',
-    marginBottom: 8,
   },
   description: {
-    fontSize: 16,
     textAlign: 'center',
     lineHeight: 22,
-    marginBottom: 32,
+    maxWidth: 280,
   },
   button: {
     minWidth: 150,
-  },
-  content: {
-    flex: 1,
-    padding: 16,
-  },
-  periodCard: {
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 16,
-  },
-  periodSelector: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  periodButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    gap: 6,
-  },
-  periodButtonActive: {
-    borderWidth: 2,
-  },
-  periodButtonText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  summaryCard: {
-    marginBottom: 16,
-  },
-  summaryGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  summaryItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  summaryIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  summaryLabel: {
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  summaryValue: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  chartCard: {
-    marginBottom: 16,
-  },
-  statsCard: {
-    marginBottom: 16,
-  },
-  statsList: {
-    gap: 12,
-  },
-  statItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  statLabel: {
-    fontSize: 14,
-  },
-  statValue: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  actionsCard: {
-    marginBottom: 32,
-  },
-  actionsList: {
-    gap: 12,
-  },
-  actionButton: {
-    marginBottom: 8,
   },
 });

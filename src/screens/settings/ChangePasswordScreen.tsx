@@ -9,6 +9,7 @@ import {
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { Ionicons } from '@expo/vector-icons';
+import * as yup from 'yup';
 
 import Header from '../../components/common/Header';
 import Card from '../../components/common/Card';
@@ -16,7 +17,6 @@ import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
 import { useThemeStore } from '../../store/themeStore';
 import { getTheme } from '../../styles/theme';
-import { changePasswordSchema } from '../../utils/validators';
 import { userService } from '../../services/api/user';
 import type { MainStackScreenProps } from '../../navigation/types';
 
@@ -27,6 +27,18 @@ interface ChangePasswordForm {
   newPassword: string;
   confirmPassword: string;
 }
+
+const changePasswordSchema = yup.object().shape({
+  currentPassword: yup.string().required('Senha atual obrigatória'),
+  newPassword: yup
+    .string()
+    .min(6, 'Nova senha deve ter pelo menos 6 caracteres')
+    .required('Nova senha obrigatória'),
+  confirmPassword: yup
+    .string()
+    .oneOf([yup.ref('newPassword')], 'Senhas não conferem')
+    .required('Confirme sua nova senha'),
+});
 
 export default function ChangePasswordScreen({ navigation }: Props) {
   const { theme } = useThemeStore();
@@ -53,20 +65,23 @@ export default function ChangePasswordScreen({ navigation }: Props) {
   const onSubmit = async (data: ChangePasswordForm) => {
     setIsLoading(true);
     try {
-      const response = await userService.changePassword(data);
+      await userService.changePassword({
+        currentPassword: data.currentPassword,
+        newPassword: data.newPassword,
+        confirmPassword: ''
+      });
       
-      if (response.success) {
-        Alert.alert(
-          'Senha Alterada!',
-          'Sua senha foi alterada com sucesso.',
-          [{ text: 'OK', onPress: () => navigation.goBack() }]
-        );
-        reset();
-      } else {
-        Alert.alert('Erro', response.message || 'Erro ao alterar senha');
-      }
+      Alert.alert(
+        'Senha Alterada!',
+        'Sua senha foi alterada com sucesso.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+      reset();
     } catch (error: any) {
-      Alert.alert('Erro', error.message || 'Erro interno. Tente novamente.');
+      Alert.alert(
+        'Erro', 
+        error.response?.data?.message || 'Erro ao alterar senha. Tente novamente.'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -117,9 +132,7 @@ export default function ChangePasswordScreen({ navigation }: Props) {
     return { strength, score, feedback };
   };
 
-  const passwordStrength = newPassword ? getPasswordStrength(newPassword) : null;
-
-  const getStrengthColor = (strength: string) => {
+  const getStrengthColor = (strength: 'weak' | 'medium' | 'strong') => {
     switch (strength) {
       case 'weak': return themeConfig.colors.error;
       case 'medium': return themeConfig.colors.warning;
@@ -128,7 +141,7 @@ export default function ChangePasswordScreen({ navigation }: Props) {
     }
   };
 
-  const getStrengthText = (strength: string) => {
+  const getStrengthText = (strength: 'weak' | 'medium' | 'strong') => {
     switch (strength) {
       case 'weak': return 'Fraca';
       case 'medium': return 'Média';
@@ -136,6 +149,8 @@ export default function ChangePasswordScreen({ navigation }: Props) {
       default: return '';
     }
   };
+
+  const passwordStrength = newPassword ? getPasswordStrength(newPassword) : null;
 
   return (
     <View style={[styles.container, { backgroundColor: themeConfig.colors.background }]}>
@@ -146,17 +161,19 @@ export default function ChangePasswordScreen({ navigation }: Props) {
       />
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Security Info */}
+        {/* Info Card */}
         <Card style={styles.infoCard}>
           <View style={styles.infoHeader}>
-            <Ionicons name="shield-checkmark" size={24} color={themeConfig.colors.success} />
+            <View style={[styles.infoIcon, { backgroundColor: themeConfig.colors.primary + '20' }]}>
+              <Ionicons name="shield-checkmark" size={24} color={themeConfig.colors.primary} />
+            </View>
             <Text style={[styles.infoTitle, { color: themeConfig.colors.text }]}>
               Segurança da Conta
             </Text>
           </View>
           <Text style={[styles.infoText, { color: themeConfig.colors.textSecondary }]}>
-            Para sua segurança, use uma senha forte com pelo menos 8 caracteres, 
-            incluindo letras maiúsculas, minúsculas, números e símbolos.
+            Altere sua senha regularmente para manter sua conta segura. 
+            Use uma senha forte e única que você não utiliza em outros lugares.
           </Text>
         </Card>
 
@@ -319,6 +336,13 @@ export default function ChangePasswordScreen({ navigation }: Props) {
                 Considere usar um gerenciador de senhas
               </Text>
             </View>
+            
+            <View style={styles.tipItem}>
+              <Ionicons name="checkmark-circle-outline" size={16} color={themeConfig.colors.success} />
+              <Text style={[styles.tipText, { color: themeConfig.colors.textSecondary }]}>
+                Altere sua senha se suspeitar de acesso não autorizado
+              </Text>
+            </View>
           </View>
         </Card>
 
@@ -355,6 +379,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
     gap: 12,
+  },
+  infoIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   infoTitle: {
     fontSize: 16,

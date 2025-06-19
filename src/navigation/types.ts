@@ -1,3 +1,4 @@
+// Atualização para src/navigation/types.ts
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { CompositeScreenProps } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -23,8 +24,17 @@ export type MainTabParamList = {
 };
 
 export type MainStackParamList = {
-  MainTabs: undefined;
-  AddTransaction: { type?: 'income' | 'expense' };
+  MainTabs: { screen?: keyof MainTabParamList }; 
+  AddTransaction: {
+    type?: 'income' | 'expense';
+    initialData?: {
+      description: string;
+      amount: string;
+      categoryId: string;
+      notes?: string;
+      paymentMethod: string;
+    };
+  };
   EditTransaction: { transactionId: string };
   AddBudget: undefined;
   EditBudget: { budgetId: string };
@@ -33,7 +43,6 @@ export type MainStackParamList = {
   Reports: undefined;
   Settings: undefined;
   EditProfile: undefined;
-  ChangePassword: undefined;
   TransactionDetail: { transactionId: string };
   BudgetDetail: { budgetId: string };
   GoalDetail: { goalId: string };
