@@ -11,7 +11,6 @@ interface BarChartProps {
     labels: string[];
     datasets: Array<{
       data: number[];
-      color?: (opacity: number) => string;
     }>;
   };
   title?: string;
@@ -30,12 +29,22 @@ export default function BarChart({
   const { theme } = useThemeStore();
   const themeConfig = getTheme(theme);
 
+  if (!data.labels.length || !data.datasets.length) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Text style={[styles.emptyText, { color: themeConfig.colors.textSecondary }]}>
+          Nenhum dado para exibir
+        </Text>
+      </View>
+    );
+  }
+
   const chartConfig = {
-    backgroundColor: themeConfig.colors.background,
+    backgroundColor: themeConfig.colors.card,
     backgroundGradientFrom: themeConfig.colors.card,
     backgroundGradientTo: themeConfig.colors.card,
     decimalPlaces: 0,
-    color: (opacity = 1) => `rgba(102, 126, 234, ${opacity})`,
+    color: (opacity = 1) => themeConfig.colors.primary + Math.round(opacity * 255).toString(16),
     labelColor: (opacity = 1) => themeConfig.colors.text + Math.round(opacity * 255).toString(16),
     style: {
       borderRadius: 16,
@@ -50,16 +59,16 @@ export default function BarChart({
           {title}
         </Text>
       )}
+      
       <RNBarChart
-              data={data}
-              width={width - 32}
-              height={height}
-              chartConfig={chartConfig}
-              style={styles.chart}
-              verticalLabelRotation={0}
-              showValuesOnTopOfBars={showValues}
-              withInnerLines={false}
-              fromZero yAxisLabel={''} yAxisSuffix={''}      />
+        data={data}
+        width={width - 32}
+        height={height}
+        chartConfig={chartConfig}
+        style={styles.chart}
+        verticalLabelRotation={30}
+        showValuesOnTopOfBars={showValues}
+        fromZero yAxisLabel={''} yAxisSuffix={''}      />
     </View>
   );
 }
@@ -77,5 +86,13 @@ const styles = StyleSheet.create({
   chart: {
     marginVertical: 8,
     borderRadius: 16,
+  },
+  emptyContainer: {
+    height: 220,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 14,
   },
 });

@@ -3,18 +3,40 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 
+// Screens das Tabs Principais
 import DashboardScreen from '../screens/main/DashboardScreen';
 import TransactionsScreen from '../screens/main/TransactionsScreen';
 import BudgetsScreen from '../screens/main/BudgetsScreen';
 import GoalsScreen from '../screens/main/GoalsScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
+
+// Screens de Transações
 import AddTransactionScreen from '../screens/main/AddTransactionScreen';
+import EditTransactionScreen from '../screens/main/EditTransactionScreen';
+// 🔥 CORRIGIDO: Import correto do TransactionDetail
+import TransactionDetailScreen from '../screens/main/TransactionDetail';
+
+// Screens de Orçamentos
 import AddBudgetScreen from '../screens/main/AddBudgetScreen';
+import EditBudgetScreen from '../screens/main/EditBudgetScreen';
+// 🔥 CORRIGIDO: Import correto do BudgetDetail
+import BudgetDetailScreen from '../screens/main/BudgetDetail';
+
+// Screens de Metas
 import AddGoalScreen from '../screens/main/AddGoalScreen';
+import EditGoalScreen from '../screens/main/EditGoalScreen';
+// 🔥 CORRIGIDO: Import correto do GoalDetail
+import GoalDetailScreen from '../screens/main/GoalDetail';
+
+// Screens de Relatórios e Configurações
 import ReportsScreen from '../screens/main/ReportsScreen';
 import SettingsScreen from '../screens/settings/SettingsScreen';
 import EditProfileScreen from '../screens/settings/EditProfileScreen';
 import ChangePasswordScreen from '../screens/settings/ChangePasswordScreen';
+
+// Screen de Gerenciamento de Categorias
+// 🔥 CORRIGIDO: Import correto do CategoryManagement
+import CategoryManagementScreen from '../screens/settings/CategoryManagement';
 
 import { useThemeStore } from '../store/themeStore';
 import { getTheme } from '../styles/theme';
@@ -103,7 +125,10 @@ function MainTabs() {
 export default function MainNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
+      {/* Tabs Principais */}
       <Stack.Screen name="MainTabs" component={MainTabs} />
+      
+      {/* 💰 TRANSAÇÕES */}
       <Stack.Screen 
         name="AddTransaction" 
         component={AddTransactionScreen}
@@ -112,12 +137,121 @@ export default function MainNavigator() {
           animation: 'slide_from_bottom' 
         }}
       />
-      <Stack.Screen name="AddBudget" component={AddBudgetScreen} />
-      <Stack.Screen name="AddGoal" component={AddGoalScreen} />
-      <Stack.Screen name="Reports" component={ReportsScreen} />
-      <Stack.Screen name="Settings" component={SettingsScreen} />
-      <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-      <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+      <Stack.Screen 
+        name="EditTransaction" 
+        component={EditTransactionScreen}
+        options={{
+          presentation: 'modal',
+          animation: 'slide_from_bottom'
+        }}
+      />
+      <Stack.Screen 
+        name="TransactionDetail" 
+        component={TransactionDetailScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right'
+        }}
+      />
+
+      {/* 💼 ORÇAMENTOS */}
+      <Stack.Screen 
+        name="AddBudget" 
+        component={AddBudgetScreen}
+        options={{
+          presentation: 'modal',
+          animation: 'slide_from_bottom'
+        }}
+      />
+      <Stack.Screen 
+        name="EditBudget" 
+        component={EditBudgetScreen}
+        options={{
+          presentation: 'modal',
+          animation: 'slide_from_bottom'
+        }}
+      />
+      <Stack.Screen 
+        name="BudgetDetail" 
+        component={BudgetDetailScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right'
+        }}
+      />
+
+      {/* 🎯 METAS */}
+      <Stack.Screen 
+        name="AddGoal" 
+        component={AddGoalScreen}
+        options={{
+          presentation: 'modal',
+          animation: 'slide_from_bottom'
+        }}
+      />
+      <Stack.Screen 
+        name="EditGoal" 
+        component={EditGoalScreen}
+        options={{
+          presentation: 'modal',
+          animation: 'slide_from_bottom'
+        }}
+      />
+      <Stack.Screen 
+        name="GoalDetail" 
+        component={GoalDetailScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right'
+        }}
+      />
+
+      {/* 📊 RELATÓRIOS */}
+      <Stack.Screen 
+        name="Reports" 
+        component={ReportsScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right'
+        }}
+      />
+
+      {/* ⚙️ CONFIGURAÇÕES */}
+      <Stack.Screen 
+        name="Settings" 
+        component={SettingsScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right'
+        }}
+      />
+      <Stack.Screen 
+        name="EditProfile" 
+        component={EditProfileScreen}
+        options={{
+          presentation: 'modal',
+          animation: 'slide_from_bottom'
+        }}
+      />
+      {/* 🔥 CORRIGIDO: Nome correto da tela */}
+      <Stack.Screen 
+        name="ChangePassword" 
+        component={ChangePasswordScreen}
+        options={{
+          presentation: 'modal',
+          animation: 'slide_from_bottom'
+        }}
+      />
+
+      {/* 🏷️ GERENCIAMENTO DE CATEGORIAS */}
+      <Stack.Screen 
+        name="CategoryManagement" 
+        component={CategoryManagementScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right'
+        }}
+      />
     </Stack.Navigator>
   );
 }

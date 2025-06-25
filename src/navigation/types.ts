@@ -1,4 +1,4 @@
-// Atualização para src/navigation/types.ts
+// src/navigation/types.ts
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { CompositeScreenProps } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -23,8 +23,11 @@ export type MainTabParamList = {
   Profile: undefined;
 };
 
+// 🔥 CORRIGIDO: MainStackParamList completo
 export type MainStackParamList = {
   MainTabs: { screen?: keyof MainTabParamList }; 
+  
+  // Transações
   AddTransaction: {
     type?: 'income' | 'expense';
     initialData?: {
@@ -36,16 +39,25 @@ export type MainStackParamList = {
     };
   };
   EditTransaction: { transactionId: string };
+  TransactionDetail: { transactionId: string };
+  
+  // Orçamentos
   AddBudget: undefined;
   EditBudget: { budgetId: string };
+  BudgetDetail: { budgetId: string };
+  
+  // Metas
   AddGoal: undefined;
   EditGoal: { goalId: string };
+  GoalDetail: { goalId: string };
+  
+  // Relatórios e Configurações
   Reports: undefined;
   Settings: undefined;
   EditProfile: undefined;
-  TransactionDetail: { transactionId: string };
-  BudgetDetail: { budgetId: string };
-  GoalDetail: { goalId: string };
+  ChangePassword: undefined; // 🔥 ADICIONADO
+  
+  // Gerenciamento
   CategoryManagement: undefined;
 };
 

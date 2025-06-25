@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -36,25 +36,52 @@ export default function TransactionsScreen({ navigation }: Props) {
   const { theme } = useThemeStore();
   const themeConfig = getTheme(theme);
 
+  // 🔥 DEBUG: Log para rastrear problemas
+  useEffect(() => {
+    console.log('🔄 TransactionsScreen: Configurando query com parâmetros:', {
+      searchText,
+      filterType,
+      page
+    });
+  }, [searchText, filterType, page]);
+
   const {
     data: transactionsResponse,
     isLoading,
+    error,
     refetch,
   } = useQuery({
     queryKey: ['transactions', { search: searchText, type: filterType === 'all' ? undefined : filterType, page }],
-    queryFn: () => transactionService.getTransactions({
-      search: searchText || undefined,
-      type: filterType === 'all' ? undefined : filterType,
-      page,
-      limit: 20,
-    }),
-    staleTime: 1000 * 60 * 2, 
+    queryFn: async () => {
+      console.log('📡 Fazendo requisição para transações...');
+      const result = await transactionService.getTransactions({
+        search: searchText || undefined,
+        type: filterType === 'all' ? undefined : filterType,
+        page,
+        limit: 20,
+      });
+      console.log('📥 Resposta recebida:', result);
+      return result;
+    },
+    staleTime: 1000 * 60 * 2,
+    retry: 2,
   });
 
   const transactions = transactionsResponse?.data?.items || [];
   const pagination = transactionsResponse?.data?.pagination;
 
+  // 🔥 DEBUG: Log dos dados recebidos
+  useEffect(() => {
+    console.log('📊 Dados atualizados:', {
+      isLoading,
+      error: error?.message,
+      transactions: transactions.length,
+      pagination
+    });
+  }, [isLoading, error, transactions, pagination]);
+
   const onRefresh = useCallback(async () => {
+    console.log('🔄 Refreshing transactions...');
     setRefreshing(true);
     await refetch();
     setRefreshing(false);
@@ -62,8 +89,22 @@ export default function TransactionsScreen({ navigation }: Props) {
 
   const loadMore = () => {
     if (pagination && page < pagination.totalPages) {
+      console.log(`📄 Carregando página ${page + 1} de ${pagination.totalPages}`);
       setPage(prev => prev + 1);
     }
+  };
+
+  const getPaymentMethodLabel = (method: string): string => {
+    const labels: Record<string, string> = {
+      cash: 'Dinheiro',
+      credit_card: 'Cartão de Crédito',
+      debit_card: 'Cartão de Débito',
+      bank_transfer: 'Transferência',
+      pix: 'PIX',
+      other: 'Outro',
+    };
+    
+    return labels[method] || method;
   };
 
   const renderFilterButton = (type: FilterType, label: string, icon: string) => (
@@ -74,6 +115,7 @@ export default function TransactionsScreen({ navigation }: Props) {
         { borderColor: filterType === type ? themeConfig.colors.primary : themeConfig.colors.border }
       ]}
       onPress={() => {
+        console.log(`🎯 Filtro alterado para: ${type}`);
         setFilterType(type);
         setPage(1);
       }}
@@ -98,7 +140,10 @@ export default function TransactionsScreen({ navigation }: Props) {
         styles.transactionItem,
         index !== 0 && { borderTopWidth: 1, borderTopColor: themeConfig.colors.border }
       ]}
-      onPress={() => navigation.navigate('TransactionDetail', { transactionId: item._id })}
+      onPress={() => {
+        console.log(`🔍 Navegando para detalhe da transação: ${item._id}`);
+        navigation.navigate('TransactionDetail', { transactionId: item._id });
+      }}
     >
       <View style={styles.transactionIcon}>
         <View style={[
@@ -159,7 +204,11 @@ export default function TransactionsScreen({ navigation }: Props) {
       <Input
         placeholder="Buscar transações..."
         value={searchText}
-        onChangeText={setSearchText}
+        onChangeText={(text) => {
+          console.log(`🔍 Busca alterada: "${text}"`);
+          setSearchText(text);
+          setPage(1);
+        }}
         variant="filled"
         leftIcon={
           <Ionicons name="search" size={20} color={themeConfig.colors.textSecondary} />
@@ -179,6 +228,22 @@ export default function TransactionsScreen({ navigation }: Props) {
         <Text style={[styles.summary, { color: themeConfig.colors.textSecondary }]}>
           {pagination.totalItems} transações encontradas
         </Text>
+      )}
+
+      {/* 🔥 DEBUG: Informações de debug */}
+      {__DEV__ && (
+        <View style={[styles.debugContainer, { backgroundColor: themeConfig.colors.card }]}>
+          <Text style={[styles.debugText, { color: themeConfig.colors.textSecondary }]}>
+            🐛 DEBUG: Loading: {isLoading ? 'SIM' : 'NÃO'} | 
+            Transações: {transactions.length} | 
+            Erro: {error ? 'SIM' : 'NÃO'}
+          </Text>
+          {error && (
+            <Text style={[styles.debugText, { color: themeConfig.colors.error }]}>
+              ❌ Erro: {error.message}
+            </Text>
+          )}
+        </View>
       )}
     </View>
   );
@@ -214,6 +279,40 @@ export default function TransactionsScreen({ navigation }: Props) {
       )}
     </View>
   );
+
+  // 🔥 DEBUG: Mostrar estado de erro
+  if (error) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: themeConfig.colors.background }]}>
+        <View style={styles.topBar}>
+          <Text style={[styles.title, { color: themeConfig.colors.text }]}>
+            Transações
+          </Text>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('AddTransaction', {})}
+            style={[styles.addButton, { backgroundColor: themeConfig.colors.primary }]}
+          >
+            <Ionicons name="add" size={24} color="#ffffff" />
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle" size={48} color={themeConfig.colors.error} />
+          <Text style={[styles.errorTitle, { color: themeConfig.colors.text }]}>
+            Erro ao carregar transações
+          </Text>
+          <Text style={[styles.errorMessage, { color: themeConfig.colors.textSecondary }]}>
+            {error.message}
+          </Text>
+          <Button
+            title="Tentar Novamente"
+            onPress={() => refetch()}
+            style={styles.retryButton}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: themeConfig.colors.background }]}>
@@ -256,19 +355,6 @@ export default function TransactionsScreen({ navigation }: Props) {
   );
 }
 
-const getPaymentMethodLabel = (method: string): string => {
-  const labels: Record<string, string> = {
-    cash: 'Dinheiro',
-    credit_card: 'Cartão de Crédito',
-    debit_card: 'Cartão de Débito',
-    bank_transfer: 'Transferência',
-    pix: 'PIX',
-    other: 'Outro',
-  };
-  
-  return labels[method] || method;
-};
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -295,12 +381,10 @@ const styles = StyleSheet.create({
   contentCard: {
     flex: 1,
     margin: 16,
-    padding: 0,
+    marginTop: 8,
   },
   header: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    paddingBottom: 16,
   },
   searchInput: {
     marginBottom: 16,
@@ -308,7 +392,7 @@ const styles = StyleSheet.create({
   filtersContainer: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 16,
   },
   filterButton: {
     flexDirection: 'row',
@@ -317,7 +401,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
-    gap: 4,
+    gap: 6,
   },
   filterButtonText: {
     fontSize: 12,
@@ -327,11 +411,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
   },
+  debugContainer: {
+    marginTop: 8,
+    padding: 8,
+    borderRadius: 8,
+  },
+  debugText: {
+    fontSize: 10,
+    textAlign: 'center',
+  },
   transactionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
     paddingVertical: 12,
+    paddingHorizontal: 4,
   },
   transactionIcon: {
     marginRight: 12,
@@ -348,18 +441,19 @@ const styles = StyleSheet.create({
   },
   transactionDescription: {
     fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 2,
+    fontWeight: '600',
+    marginBottom: 4,
   },
   transactionMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    marginBottom: 2,
   },
   transactionCategory: {
     fontSize: 12,
   },
   transactionSeparator: {
+    marginHorizontal: 6,
     fontSize: 12,
   },
   transactionDate: {
@@ -367,44 +461,45 @@ const styles = StyleSheet.create({
   },
   transactionPayment: {
     fontSize: 11,
-    marginTop: 2,
   },
   transactionAmount: {
     alignItems: 'flex-end',
   },
   transactionValue: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     marginBottom: 2,
   },
   transactionTime: {
     fontSize: 11,
   },
-  emptyState: {
+  footer: {
+    paddingVertical: 16,
     alignItems: 'center',
-    padding: 48,
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 48,
   },
   emptyStateTitle: {
     fontSize: 18,
     fontWeight: '600',
     marginTop: 16,
     marginBottom: 8,
+    textAlign: 'center',
   },
   emptyStateSubtitle: {
     fontSize: 14,
     textAlign: 'center',
-    lineHeight: 20,
     marginBottom: 24,
   },
   emptyStateButton: {
-    minWidth: 160,
+    minWidth: 200,
   },
   emptyListContainer: {
     flexGrow: 1,
-  },
-  footer: {
-    padding: 16,
-    alignItems: 'center',
   },
   loadingContainer: {
     position: 'absolute',
@@ -415,5 +510,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.1)',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  retryButton: {
+    minWidth: 120,
   },
 });

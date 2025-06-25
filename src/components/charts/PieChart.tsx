@@ -10,8 +10,6 @@ interface PieChartData {
   name: string;
   amount: number;
   color: string;
-  legendFontColor?: string;
-  legendFontSize?: number;
 }
 
 interface PieChartProps {
@@ -30,18 +28,30 @@ export default function PieChart({
   const { theme } = useThemeStore();
   const themeConfig = getTheme(theme);
 
+  if (!data || data.length === 0) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Text style={[styles.emptyText, { color: themeConfig.colors.textSecondary }]}>
+          Nenhum dado para exibir
+        </Text>
+      </View>
+    );
+  }
+
+  const chartData = data.map((item, index) => ({
+    name: item.name,
+    population: item.amount,
+    color: item.color,
+    legendFontColor: themeConfig.colors.text,
+    legendFontSize: 12,
+  }));
+
   const chartConfig = {
-    backgroundColor: themeConfig.colors.background,
+    backgroundColor: themeConfig.colors.card,
     backgroundGradientFrom: themeConfig.colors.card,
     backgroundGradientTo: themeConfig.colors.card,
-    color: (opacity = 1) => themeConfig.colors.primary + Math.round(opacity * 255).toString(16),
+    color: (opacity = 1) => themeConfig.colors.text + Math.round(opacity * 255).toString(16),
   };
-
-  const formattedData = data.map((item, index) => ({
-    ...item,
-    legendFontColor: item.legendFontColor || themeConfig.colors.text,
-    legendFontSize: item.legendFontSize || 12,
-  }));
 
   return (
     <View style={styles.container}>
@@ -50,23 +60,25 @@ export default function PieChart({
           {title}
         </Text>
       )}
+      
       <RNPieChart
-        data={formattedData}
+        data={chartData}
         width={width - 32}
         height={height}
         chartConfig={chartConfig}
-        accessor="amount"
+        accessor="population"
         backgroundColor="transparent"
         paddingLeft="15"
         center={[10, 0]}
         absolute={false}
       />
+
       {showLegend && (
-        <View style={styles.legend}>
-          {formattedData.map((item, index) => (
+        <View style={styles.legendContainer}>
+          {data.map((item, index) => (
             <View key={index} style={styles.legendItem}>
               <View style={[styles.legendColor, { backgroundColor: item.color }]} />
-              <Text style={[styles.legendText, { color: themeConfig.colors.text }]}>
+              <Text style={[styles.legendText, { color: themeConfig.colors.textSecondary }]}>
                 {item.name}
               </Text>
             </View>
@@ -87,7 +99,15 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textAlign: 'center',
   },
-  legend: {
+  emptyContainer: {
+    height: 220,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 14,
+  },
+  legendContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',

@@ -18,7 +18,7 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import { useThemeStore } from '../../store/themeStore';
 import { getTheme } from '../../styles/theme';
-import { budgetService } from '../../services/api/budgets';
+import { budgetService, type BudgetSummary } from '../../services/api/budgets';
 import { formatCurrency, formatPercent } from '../../utils/formatters';
 import type { MainTabScreenProps, Budget } from '../../types';
 
@@ -51,7 +51,7 @@ export default function BudgetsScreen({ navigation }: Props) {
   });
 
   const budgets = budgetsResponse?.data?.budgets || [];
-  const summary = summaryResponse?.data?.summary;
+  const summary = summaryResponse?.data;
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -104,7 +104,7 @@ export default function BudgetsScreen({ navigation }: Props) {
             <View style={styles.budgetTitleRow}>
               <View style={[
                 styles.categoryColor,
-                { backgroundColor: item.category?.color || item.color }
+                { backgroundColor: item.category?.color || (item as any).color || '#6366f1' }
               ]} />
               <Text style={[styles.budgetName, { color: themeConfig.colors.text }]}>
                 {item.name}
@@ -202,7 +202,7 @@ export default function BudgetsScreen({ navigation }: Props) {
         <View style={styles.summaryGrid}>
           <View style={styles.summaryItem}>
             <Text style={[styles.summaryValue, { color: themeConfig.colors.text }]}>
-              {summary.activeBudgetsCount}
+              {summary?.activeBudgetsCount || 0}
             </Text>
             <Text style={[styles.summaryLabel, { color: themeConfig.colors.textSecondary }]}>
               Ativos
@@ -211,7 +211,7 @@ export default function BudgetsScreen({ navigation }: Props) {
           
           <View style={styles.summaryItem}>
             <Text style={[styles.summaryValue, { color: themeConfig.colors.error }]}>
-              {summary.budgetsExceeded}
+              {summary?.budgetsExceeded || 0}
             </Text>
             <Text style={[styles.summaryLabel, { color: themeConfig.colors.textSecondary }]}>
               Excedidos
@@ -220,7 +220,7 @@ export default function BudgetsScreen({ navigation }: Props) {
           
           <View style={styles.summaryItem}>
             <Text style={[styles.summaryValue, { color: themeConfig.colors.warning }]}>
-              {summary.budgetsNearLimit}
+              {summary?.budgetsNearLimit || 0}
             </Text>
             <Text style={[styles.summaryLabel, { color: themeConfig.colors.textSecondary }]}>
               Próx. Limite
@@ -234,7 +234,7 @@ export default function BudgetsScreen({ navigation }: Props) {
               Total Orçado
             </Text>
             <Text style={[styles.summaryAmountValue, { color: themeConfig.colors.text }]}>
-              {formatCurrency(summary.totalBudget)}
+              {formatCurrency(summary?.totalBudget || 0)}
             </Text>
           </View>
           
@@ -243,24 +243,24 @@ export default function BudgetsScreen({ navigation }: Props) {
               Total Gasto
             </Text>
             <Text style={[styles.summaryAmountValue, { color: themeConfig.colors.error }]}>
-              {formatCurrency(summary.totalSpent)}
+              {formatCurrency(summary?.totalSpent || 0)}
             </Text>
           </View>
         </View>
 
         <View style={styles.overallProgress}>
           <Text style={[styles.overallProgressLabel, { color: themeConfig.colors.textSecondary }]}>
-            Uso Geral: {summary.overallPercentage}%
+            Uso Geral: {summary?.overallPercentage || 0}%
           </Text>
           <View style={[styles.progressBackground, { backgroundColor: themeConfig.colors.surface }]}>
             <View 
               style={[
                 styles.progressBar,
                 {
-                  width: `${Math.min(summary.overallPercentage, 100)}%`,
-                  backgroundColor: summary.overallPercentage > 100 
+                  width: `${Math.min(summary?.overallPercentage || 0, 100)}%`,
+                  backgroundColor: (summary?.overallPercentage || 0) > 100 
                     ? themeConfig.colors.error 
-                    : summary.overallPercentage >= 80
+                    : (summary?.overallPercentage || 0) >= 80
                       ? themeConfig.colors.warning
                       : themeConfig.colors.success
                 }
@@ -272,14 +272,18 @@ export default function BudgetsScreen({ navigation }: Props) {
     );
   };
 
-  const renderEmpty = () => (
+  const renderEmptyState = () => (
     <View style={styles.emptyState}>
-      <Ionicons name="wallet-outline" size={64} color={themeConfig.colors.textLight} />
-      <Text style={[styles.emptyStateTitle, { color: themeConfig.colors.textSecondary }]}>
+      <Ionicons
+        name="wallet-outline"
+        size={64}
+        color={themeConfig.colors.textLight}
+      />
+      <Text style={[styles.emptyStateTitle, { color: themeConfig.colors.text }]}>
         Nenhum orçamento criado
       </Text>
       <Text style={[styles.emptyStateSubtitle, { color: themeConfig.colors.textLight }]}>
-        Crie orçamentos para controlar seus gastos por categoria
+        Crie orçamentos para controlar seus gastos e alcançar suas metas financeiras
       </Text>
       <Button
         title="Criar Primeiro Orçamento"
@@ -304,17 +308,22 @@ export default function BudgetsScreen({ navigation }: Props) {
       </View>
 
       <FlatList
-        data={budgets}
+        data={budgets as any}
         keyExtractor={(item) => item._id}
         renderItem={renderBudgetItem}
         ListHeaderComponent={renderSummaryCard}
-        ListEmptyComponent={!isLoading ? renderEmpty : null}
+        ListEmptyComponent={!isLoading ? renderEmptyState : null}
         contentContainerStyle={[
-          styles.listContainer,
-          budgets.length === 0 && styles.emptyListContainer
+          styles.content,
+          budgets.length === 0 && styles.emptyContent
         ]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[themeConfig.colors.primary]}
+            tintColor={themeConfig.colors.primary}
+          />
         }
         showsVerticalScrollIndicator={false}
       />
@@ -328,39 +337,37 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderBottomWidth: 1,
   },
   title: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
   },
   addButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  listContainer: {
+  content: {
     padding: 16,
   },
-  emptyListContainer: {
+  emptyContent: {
     flexGrow: 1,
-    justifyContent: 'center',
   },
-  
+
   summaryCard: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   summaryTitle: {
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 16,
-    textAlign: 'center',
   },
   summaryGrid: {
     flexDirection: 'row',
@@ -377,6 +384,7 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 12,
+    textAlign: 'center',
   },
   summaryAmounts: {
     flexDirection: 'row',
@@ -384,8 +392,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   summaryAmountItem: {
-    flex: 1,
     alignItems: 'center',
+    flex: 1,
   },
   summaryAmountLabel: {
     fontSize: 12,
@@ -405,13 +413,13 @@ const styles = StyleSheet.create({
   },
 
   budgetCard: {
-    marginBottom: 12,
+    marginBottom: 16,
   },
   budgetHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   budgetInfo: {
     flex: 1,
@@ -433,15 +441,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   alertBadge: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    justifyContent: 'center',
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
     marginLeft: 8,
   },
   budgetCategory: {
-    fontSize: 12,
+    fontSize: 14,
     marginLeft: 20,
   },
   editButton: {

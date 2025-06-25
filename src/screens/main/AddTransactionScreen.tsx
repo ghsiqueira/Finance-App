@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,12 +8,15 @@ import {
   Alert,
   Platform,
   Animated,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useForm, Controller } from 'react-hook-form';
-import { yupResolver } from '@hookform/resolvers/yup';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { format, addDays, addWeeks, addMonths, addYears } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
@@ -22,9 +25,6 @@ import { useThemeStore } from '../../store/themeStore';
 import { getTheme } from '../../styles/theme';
 import { transactionService } from '../../services/api/transactions';
 import { categoryService } from '../../services/api/categories';
-import { transactionSchema } from '../../utils/validators';
-import { formatInputCurrency, parseNumber } from '../../utils/formatters';
-import { PAYMENT_METHODS } from '../../utils/constants';
 import type { MainStackScreenProps, TransactionForm, Category } from '../../types';
 
 interface EnhancedCategory extends Category {
@@ -35,6 +35,20 @@ interface EnhancedCategory extends Category {
 }
 
 type Props = MainStackScreenProps<'AddTransaction'>;
+
+type PaymentMethodType = 'cash' | 'credit_card' | 'debit_card' | 'bank_transfer' | 'pix' | 'other';
+type RecurrenceType = 'daily' | 'weekly' | 'monthly' | 'yearly';
+
+// Extended form interface to include recurring fields
+interface ExtendedTransactionForm extends TransactionForm {
+  isRecurring?: boolean;
+  recurringConfig?: {
+    frequency: RecurrenceType;
+    interval: number;
+    endDate?: Date;
+    remainingOccurrences?: number;
+  };
+}
 
 const paymentMethodOptions: Array<{
   value: PaymentMethodType;
@@ -50,7 +64,12 @@ const paymentMethodOptions: Array<{
   { value: 'other', label: 'Outro', icon: 'ellipsis-horizontal-outline', color: '#6b7280' },
 ];
 
-type PaymentMethodType = 'cash' | 'credit_card' | 'debit_card' | 'bank_transfer' | 'pix' | 'other';
+const recurrenceOptions = [
+  { value: 'daily' as RecurrenceType, label: 'Diariamente', icon: 'calendar-outline' },
+  { value: 'weekly' as RecurrenceType, label: 'Semanalmente', icon: 'calendar-outline' },
+  { value: 'monthly' as RecurrenceType, label: 'Mensalmente', icon: 'calendar-outline' },
+  { value: 'yearly' as RecurrenceType, label: 'Anualmente', icon: 'calendar-outline' },
+];
 
 export default function AddTransactionScreen({ navigation, route }: Props) {
   const [selectedType, setSelectedType] = useState<'income' | 'expense'>(
@@ -58,7 +77,17 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
   );
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethodType>('cash');
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  
+  // 🔥 Estados para recorrência
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('monthly');
+  const [recurrenceInterval, setRecurrenceInterval] = useState(1);
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | null>(null);
+  const [showRecurrenceEndPicker, setShowRecurrenceEndPicker] = useState(false);
+  const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
   
   const { theme } = useThemeStore();
   const themeConfig = getTheme(theme);
@@ -67,15 +96,25 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
   const scaleAnim = new Animated.Value(1);
   const fadeAnim = new Animated.Value(0);
 
+  const parseCurrencyToNumber = useCallback((currencyString: string): number => {
+    if (!currencyString) return 0;
+    
+    const cleanValue = currencyString
+      .replace(/[R$\s]/g, '')
+      .replace(/\./g, '')
+      .replace(',', '.');
+    
+    return parseFloat(cleanValue) || 0;
+  }, []);
+
   const {
     control,
     handleSubmit,
     setValue,
     watch,
     reset,
-    formState: { errors, isValid },
-  } = useForm({
-    resolver: yupResolver(transactionSchema) as any,
+    formState: { errors },
+  } = useForm<ExtendedTransactionForm>({
     defaultValues: {
       description: '',
       amount: '',
@@ -84,16 +123,37 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
       date: new Date(),
       notes: '',
       paymentMethod: 'cash' as PaymentMethodType,
+      isRecurring: false,
+      recurringConfig: {
+        frequency: 'monthly' as RecurrenceType,
+        interval: 1,
+        endDate: undefined,
+        remainingOccurrences: undefined,
+      },
     },
     mode: 'onChange', 
   });
 
+  const watchedValues = watch();
+  const isFormValid = Boolean(
+    watchedValues.description?.trim() && 
+    watchedValues.amount && 
+    parseCurrencyToNumber(watchedValues.amount) > 0
+  );
+
+  // 🔥 Query sem categorias default
   const { data: categoriesResponse, isLoading: loadingCategories } = useQuery({
     queryKey: ['categories', selectedType],
-    queryFn: () => categoryService.getCategories({ type: selectedType }),
+    queryFn: () => categoryService.getCategories({ 
+      type: selectedType,
+      includeInactive: false 
+    }),
+    staleTime: 5 * 60 * 1000,
   });
 
-  const categories = categoriesResponse?.data?.categories || [];
+  const categories = categoriesResponse?.data?.categories?.filter(
+    (cat: EnhancedCategory) => !cat.isDefault // 🔥 FILTRAR categorias default
+  ) || [];
 
   const createTransactionMutation = useMutation({
     mutationFn: transactionService.createTransaction,
@@ -124,7 +184,7 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
       setTimeout(() => {
         Alert.alert(
           '🎉 Sucesso!', 
-          `${selectedType === 'income' ? 'Receita' : 'Gasto'} adicionado com sucesso!`,
+          `${selectedType === 'income' ? 'Receita' : 'Gasto'} ${isRecurring ? 'recorrente ' : ''}adicionado com sucesso!`,
           [
             { 
               text: 'Adicionar Outro', 
@@ -134,6 +194,8 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
                 reset();
                 setSelectedCategory('');
                 setSelectedPaymentMethod('cash');
+                setSelectedDate(new Date());
+                setIsRecurring(false);
               }
             },
             { 
@@ -168,37 +230,76 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
     setValue('paymentMethod', selectedPaymentMethod);
   }, [selectedPaymentMethod, setValue]);
 
-  const onSubmit = async (data: any) => {
+  useEffect(() => {
+    setValue('date', selectedDate);
+  }, [selectedDate, setValue]);
+
+  const onSubmit = async (data: ExtendedTransactionForm) => {
     try {
-      const transactionData: TransactionForm = {
+      if (!data.description?.trim()) {
+        Alert.alert('Erro', 'Descrição é obrigatória');
+        return;
+      }
+
+      const numericAmount = parseCurrencyToNumber(data.amount);
+      if (!data.amount || numericAmount <= 0) {
+        Alert.alert('Erro', 'Valor deve ser maior que zero');
+        return;
+      }
+
+      // 🔥 Dados de recorrência
+      const transactionData: any = {
         description: data.description.trim(),
-        amount: parseNumber(data.amount).toString(),
-        type: data.type,
+        amount: numericAmount.toString(),
+        type: selectedType,
         categoryId: selectedCategory || undefined,
-        date: data.date,
+        date: selectedDate,
         notes: data.notes?.trim() || undefined,
         paymentMethod: selectedPaymentMethod,
+        isRecurring,
       };
+
+      // Adicionar configuração de recorrência se necessário
+      if (isRecurring) {
+        transactionData.recurringConfig = {
+          frequency: recurrenceType,
+          interval: recurrenceInterval,
+          endDate: recurrenceEndDate,
+          remainingOccurrences: recurrenceCount,
+        };
+      }
       
       console.log('📝 Enviando transação:', transactionData);
       createTransactionMutation.mutate(transactionData);
     } catch (error) {
       console.error('❌ Erro ao processar formulário:', error);
+      Alert.alert('Erro', 'Erro ao processar dados do formulário');
     }
   };
 
-  const handleAmountChange = (value: string) => {
-    const cleanValue = value.replace(/[^\d,]/g, '');
+  const handleAmountChange = useCallback((value: string) => {
+    const cleanValue = value.replace(/\D/g, '');
     
-    const numericValue = parseFloat(cleanValue.replace(',', '.')) / 100 || 0;
+    if (!cleanValue) {
+      setValue('amount', '');
+      return;
+    }
+    
+    const numericValue = parseInt(cleanValue, 10) / 100;
+    
+    if (numericValue > 999999.99) {
+      return;
+    }
     
     const formattedValue = numericValue.toLocaleString('pt-BR', {
       style: 'currency',
       currency: 'BRL',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     });
     
     setValue('amount', formattedValue);
-  };
+  }, [setValue]);
 
   const handleTypeChange = (type: 'income' | 'expense') => {
     setSelectedType(type);
@@ -214,6 +315,54 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
         useNativeDriver: true,
       }).start();
     });
+  };
+
+  // Manipuladores de data
+  const handleDateChange = (event: any, date?: Date) => {
+    setShowDatePicker(Platform.OS === 'ios');
+    if (date) {
+      setSelectedDate(date);
+    }
+  };
+
+  const handleRecurrenceEndDateChange = (event: any, date?: Date) => {
+    setShowRecurrenceEndPicker(Platform.OS === 'ios');
+    if (date) {
+      setRecurrenceEndDate(date);
+    }
+  };
+
+  // Fix for recurrence type setting with proper type assertion
+  const handleRecurrenceTypeChange = (value: string) => {
+    setRecurrenceType(value as RecurrenceType);
+  };
+
+  // Gerador de próximas datas
+  const getNextOccurrences = (count: number = 3) => {
+    if (!isRecurring) return [];
+    
+    const dates = [];
+    let currentDate = new Date(selectedDate);
+    
+    for (let i = 0; i < count; i++) {
+      switch (recurrenceType) {
+        case 'daily':
+          currentDate = addDays(currentDate, recurrenceInterval);
+          break;
+        case 'weekly':
+          currentDate = addWeeks(currentDate, recurrenceInterval);
+          break;
+        case 'monthly':
+          currentDate = addMonths(currentDate, recurrenceInterval);
+          break;
+        case 'yearly':
+          currentDate = addYears(currentDate, recurrenceInterval);
+          break;
+      }
+      dates.push(new Date(currentDate));
+    }
+    
+    return dates;
   };
 
   const quickAmounts = selectedType === 'expense' 
@@ -284,32 +433,28 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
           </View>
         </Card>
 
-        {/* Valor */}
+        {/* Informações Básicas */}
         <Card style={styles.section}>
           <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-            💵 Valor
+            📝 Informações Básicas
           </Text>
-          
+
           <Controller
-            name="amount"
+            name="description"
             control={control}
-            render={({ field: { value } }) => (
+            rules={{ required: 'Descrição é obrigatória' }}
+            render={({ field: { onChange, onBlur, value } }) => (
               <Input
-                label="Quanto foi?"
-                placeholder="R$ 0,00"
+                label="Descrição *"
+                placeholder="Ex: Almoço no restaurante"
                 value={value}
-                onChangeText={handleAmountChange}
-                error={errors.amount?.message}
-                keyboardType="numeric"
-                style={styles.amountInput}
-                inputStyle={{
-                  ...styles.amountInputText,
-                  color: selectedType === 'income' ? themeConfig.colors.success : themeConfig.colors.error,
-                }}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                error={errors.description?.message}
                 leftIcon={
                   <Ionicons 
-                    name="cash-outline" 
-                    size={24} 
+                    name="document-text-outline" 
+                    size={20} 
                     color={themeConfig.colors.textSecondary} 
                   />
                 }
@@ -317,25 +462,51 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
             )}
           />
 
-          {/* Valores Rápidos */}
-          <View style={styles.quickAmountsContainer}>
+          <Controller
+            name="amount"
+            control={control}
+            rules={{ 
+              required: 'Valor é obrigatório',
+              validate: (value) => {
+                const num = parseCurrencyToNumber(value);
+                if (num <= 0) return 'Valor deve ser maior que zero';
+                if (num > 999999.99) return 'Valor muito alto';
+                return true;
+              }
+            }}
+            render={({ field: { onChange, onBlur, value } }) => (
+              <Input
+                label="💵 Valor *"
+                placeholder="R$ 0,00"
+                value={value}
+                onChangeText={handleAmountChange}
+                onBlur={onBlur}
+                error={errors.amount?.message}
+                keyboardType="numeric"
+                leftIcon={
+                  <Ionicons 
+                    name="cash-outline" 
+                    size={20} 
+                    color={themeConfig.colors.textSecondary} 
+                  />
+                }
+              />
+            )}
+          />
+
+          {/* Valores rápidos */}
+          <View style={styles.quickAmounts}>
             <Text style={[styles.quickAmountsLabel, { color: themeConfig.colors.textSecondary }]}>
               Valores rápidos:
             </Text>
-            <View style={styles.quickAmounts}>
+            <View style={styles.quickAmountsContainer}>
               {quickAmounts.map((amount) => (
                 <TouchableOpacity
                   key={amount}
-                  style={[styles.quickAmount, { backgroundColor: themeConfig.colors.surface }]}
-                  onPress={() => {
-                    const formatted = amount.toLocaleString('pt-BR', {
-                      style: 'currency',
-                      currency: 'BRL',
-                    });
-                    setValue('amount', formatted);
-                  }}
+                  style={[styles.quickAmountButton, { borderColor: themeConfig.colors.border }]}
+                  onPress={() => handleAmountChange((amount * 100).toString())}
                 >
-                  <Text style={[styles.quickAmountText, { color: themeConfig.colors.text }]}>
+                  <Text style={[styles.quickAmountText, { color: themeConfig.colors.primary }]}>
                     R$ {amount}
                   </Text>
                 </TouchableOpacity>
@@ -344,83 +515,198 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
           </View>
         </Card>
 
-        {/* Descrição */}
+        {/* Seletor de Data */}
         <Card style={styles.section}>
-          <Controller
-            name="description"
-            control={control}
-            render={({ field: { onChange, onBlur, value } }) => (
-              <Input
-                label="📝 Descrição"
-                placeholder={selectedType === 'expense' ? "Ex: Almoço no restaurante" : "Ex: Freelance projeto X"}
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-                error={errors.description?.message}
-                leftIcon={
-                  <Ionicons 
-                    name="create-outline" 
-                    size={20} 
-                    color={themeConfig.colors.textSecondary} 
-                  />
-                }
-              />
-            )}
-          />
+          <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
+            📅 Data da Transação
+          </Text>
+          
+          <TouchableOpacity
+            style={[styles.dateButton, { borderColor: themeConfig.colors.border }]}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Ionicons name="calendar-outline" size={20} color={themeConfig.colors.primary} />
+            <Text style={[styles.dateButtonText, { color: themeConfig.colors.text }]}>
+              {format(selectedDate, 'dd/MM/yyyy (EEEE)', { locale: ptBR })}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color={themeConfig.colors.textSecondary} />
+          </TouchableOpacity>
+
+          {showDatePicker && (
+            <DateTimePicker
+              value={selectedDate}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={handleDateChange}
+              locale="pt-BR"
+            />
+          )}
+        </Card>
+
+        {/* Configuração de Recorrência */}
+        <Card style={styles.section}>
+          <View style={styles.recurrenceHeader}>
+            <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
+              🔄 Transação Recorrente (Opcional)
+            </Text>
+            <Switch
+              value={isRecurring}
+              onValueChange={setIsRecurring}
+              trackColor={{ 
+                false: themeConfig.colors.border, 
+                true: themeConfig.colors.primary + '50' 
+              }}
+              thumbColor={isRecurring ? themeConfig.colors.primary : themeConfig.colors.textSecondary}
+            />
+          </View>
+
+          {isRecurring && (
+            <View style={styles.recurrenceConfig}>
+              {/* Tipo de Recorrência */}
+              <Text style={[styles.subTitle, { color: themeConfig.colors.textSecondary }]}>
+                Frequência:
+              </Text>
+              <View style={styles.recurrenceOptions}>
+                {recurrenceOptions.map((option) => (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[
+                      styles.recurrenceOption,
+                      { borderColor: themeConfig.colors.border },
+                      recurrenceType === option.value && {
+                        backgroundColor: themeConfig.colors.primary + '20',
+                        borderColor: themeConfig.colors.primary,
+                      }
+                    ]}
+                    onPress={() => handleRecurrenceTypeChange(option.value)}
+                  >
+                    <Text style={[
+                      styles.recurrenceOptionText,
+                      { color: recurrenceType === option.value ? themeConfig.colors.primary : themeConfig.colors.text }
+                    ]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Intervalo */}
+              <Text style={[styles.subTitle, { color: themeConfig.colors.textSecondary, marginTop: 16 }]}>
+                Repetir a cada:
+              </Text>
+              <View style={styles.intervalContainer}>
+                {/* Fixed: Remove Controller for interval and use direct input */}
+                <Input
+                  value={recurrenceInterval.toString()}
+                  onChangeText={(text) => {
+                    const num = parseInt(text) || 1;
+                    setRecurrenceInterval(Math.max(1, Math.min(num, 99)));
+                  }}
+                  keyboardType="numeric"
+                  style={styles.intervalInput}
+                />
+                <Text style={[styles.intervalLabel, { color: themeConfig.colors.text }]}>
+                  {recurrenceType === 'daily' ? 'dia(s)' : 
+                   recurrenceType === 'weekly' ? 'semana(s)' :
+                   recurrenceType === 'monthly' ? 'mês(es)' : 'ano(s)'}
+                </Text>
+              </View>
+
+              {/* Data de Fim (Opcional) */}
+              <Text style={[styles.subTitle, { color: themeConfig.colors.textSecondary, marginTop: 16 }]}>
+                Terminar em (opcional):
+              </Text>
+              <TouchableOpacity
+                style={[styles.dateButton, { borderColor: themeConfig.colors.border }]}
+                onPress={() => setShowRecurrenceEndPicker(true)}
+              >
+                <Ionicons name="calendar-outline" size={20} color={themeConfig.colors.primary} />
+                <Text style={[styles.dateButtonText, { color: themeConfig.colors.text }]}>
+                  {recurrenceEndDate 
+                    ? format(recurrenceEndDate, 'dd/MM/yyyy', { locale: ptBR })
+                    : 'Sem data limite'
+                  }
+                </Text>
+                {recurrenceEndDate && (
+                  <TouchableOpacity onPress={() => setRecurrenceEndDate(null)}>
+                    <Ionicons name="close-circle" size={16} color={themeConfig.colors.error} />
+                  </TouchableOpacity>
+                )}
+              </TouchableOpacity>
+
+              {showRecurrenceEndPicker && (
+                <DateTimePicker
+                  value={recurrenceEndDate || addMonths(selectedDate, 1)}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={handleRecurrenceEndDateChange}
+                  minimumDate={selectedDate}
+                  locale="pt-BR"
+                />
+              )}
+
+              {/* Preview das próximas ocorrências */}
+              <View style={styles.previewContainer}>
+                <Text style={[styles.subTitle, { color: themeConfig.colors.textSecondary }]}>
+                  Próximas ocorrências:
+                </Text>
+                {getNextOccurrences().map((date, index) => (
+                  <Text key={index} style={[styles.previewDate, { color: themeConfig.colors.primary }]}>
+                    • {format(date, 'dd/MM/yyyy (EEEE)', { locale: ptBR })}
+                  </Text>
+                ))}
+              </View>
+            </View>
+          )}
         </Card>
 
         {/* Categoria */}
         <Card style={styles.section}>
           <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-            📂 Categoria
+            🏷️ Categoria {selectedCategory ? '' : '(Opcional)'}
           </Text>
           
           {loadingCategories ? (
-            <Text style={[styles.loadingText, { color: themeConfig.colors.textSecondary }]}>
-              Carregando categorias...
-            </Text>
+            <Text style={{ color: themeConfig.colors.textSecondary }}>Carregando categorias...</Text>
+          ) : categories.length === 0 ? (
+            <View style={styles.noCategoriesContainer}>
+              <Ionicons name="folder-open-outline" size={48} color={themeConfig.colors.textLight} />
+              <Text style={[styles.noCategoriesTitle, { color: themeConfig.colors.textSecondary }]}>
+                Nenhuma categoria criada
+              </Text>
+              <Text style={[styles.noCategoriesSubtitle, { color: themeConfig.colors.textLight }]}>
+                Crie categorias para organizar melhor suas transações
+              </Text>
+              <Button
+                title="Criar Categoria"
+                onPress={() => navigation.navigate('CategoryManagement')}
+                variant="outline"
+                style={styles.createCategoryButton}
+                leftIcon={<Ionicons name="add" size={16} color={themeConfig.colors.primary} />}
+              />
+            </View>
           ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
-              <TouchableOpacity
-                style={[
-                  styles.categoryItem,
-                  !selectedCategory && styles.categoryItemSelected,
-                  !selectedCategory && { backgroundColor: themeConfig.colors.textLight + '20', borderColor: themeConfig.colors.textLight }
-                ]}
-                onPress={() => setSelectedCategory('')}
-              >
-                <Ionicons 
-                  name="help-circle-outline" 
-                  size={24} 
-                  color={!selectedCategory ? themeConfig.colors.textLight : themeConfig.colors.textSecondary} 
-                />
-                <Text style={[
-                  styles.categoryText,
-                  { color: !selectedCategory ? themeConfig.colors.textLight : themeConfig.colors.textSecondary }
-                ]}>
-                  Sem categoria
-                </Text>
-              </TouchableOpacity>
-
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll}>
               {categories.map((category: EnhancedCategory) => (
                 <TouchableOpacity
                   key={category._id}
                   style={[
                     styles.categoryItem,
-                    selectedCategory === category._id && styles.categoryItemSelected,
-                    selectedCategory === category._id && { backgroundColor: category.color + '20', borderColor: category.color }
+                    selectedCategory === category._id && {
+                      backgroundColor: category.color + '20',
+                      borderColor: category.color,
+                    }
                   ]}
                   onPress={() => setSelectedCategory(category._id)}
                 >
-                  <Ionicons 
-                    name={category.icon as any} 
-                    size={24} 
-                    color={selectedCategory === category._id ? category.color : themeConfig.colors.textSecondary} 
-                  />
-                  <Text style={[
-                    styles.categoryText,
-                    { color: selectedCategory === category._id ? category.color : themeConfig.colors.textSecondary }
-                  ]}>
+                  <Text style={styles.categoryIcon}>{category.icon}</Text>
+                  <Text 
+                    style={[
+                      styles.categoryName,
+                      { color: selectedCategory === category._id ? category.color : themeConfig.colors.text }
+                    ]}
+                    numberOfLines={1}
+                  >
                     {category.name}
                   </Text>
                 </TouchableOpacity>
@@ -434,14 +720,17 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
           <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
             💳 Método de Pagamento
           </Text>
-          <View style={styles.paymentMethodGrid}>
+          <View style={styles.paymentMethodsGrid}>
             {paymentMethodOptions.map((method) => (
               <TouchableOpacity
                 key={method.value}
                 style={[
-                  styles.paymentMethodItem,
-                  selectedPaymentMethod === method.value && styles.paymentMethodSelected,
-                  selectedPaymentMethod === method.value && { backgroundColor: method.color + '15', borderColor: method.color }
+                  styles.paymentMethodButton,
+                  { borderColor: themeConfig.colors.border },
+                  selectedPaymentMethod === method.value && {
+                    backgroundColor: method.color + '20',
+                    borderColor: method.color,
+                  }
                 ]}
                 onPress={() => setSelectedPaymentMethod(method.value)}
               >
@@ -507,16 +796,26 @@ export default function AddTransactionScreen({ navigation, route }: Props) {
           </Animated.View>
         )}
         
+        {/* Debug: Mostrar status da validação */}
+        {__DEV__ && (
+          <Text style={{ fontSize: 10, color: themeConfig.colors.textSecondary, textAlign: 'center', marginBottom: 8 }}>
+            DEBUG: Form válido: {isFormValid ? 'SIM' : 'NÃO'} | 
+            Desc: {watchedValues.description?.trim() ? 'OK' : 'VAZIO'} | 
+            Valor: {parseCurrencyToNumber(watchedValues.amount || '') > 0 ? `R$ ${parseCurrencyToNumber(watchedValues.amount || '')}` : 'INVÁLIDO'}
+            {isRecurring && ` | Recorrente: ${recurrenceType}`}
+          </Text>
+        )}
+        
         <Button
-          title={createTransactionMutation.isPending ? "Salvando..." : "💾 Salvar Transação"}
+          title={createTransactionMutation.isPending ? "Salvando..." : `💾 Salvar Transação${isRecurring ? ' Recorrente' : ''}`}
           onPress={handleSubmit(onSubmit)}
           loading={createTransactionMutation.isPending}
-          disabled={createTransactionMutation.isPending || !isValid}
+          disabled={createTransactionMutation.isPending || !isFormValid}
           fullWidth
           gradient
           style={{
             ...styles.saveButton,
-            ...(isValid ? {} : { opacity: 0.6 }),
+            opacity: isFormValid ? 1 : 0.6
           }}
         />
       </Animated.View>
@@ -544,7 +843,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
   content: {
     flex: 1,
@@ -556,7 +855,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 16,
+    marginBottom: 12,
+  },
+  subTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
   },
   typeSelector: {
     flexDirection: 'row',
@@ -564,98 +868,157 @@ const styles = StyleSheet.create({
   },
   typeButton: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-    borderRadius: 16,
+    padding: 16,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: 'transparent',
-    gap: 8,
   },
   typeButtonActive: {
     borderWidth: 2,
   },
   typeButtonText: {
-    fontSize: 16,
+    marginTop: 8,
+    fontSize: 14,
     fontWeight: '600',
   },
-  amountInput: {
-    marginBottom: 16,
-  },
-  amountInputText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  quickAmountsContainer: {
-    marginTop: 8,
+  quickAmounts: {
+    marginTop: 12,
   },
   quickAmountsLabel: {
     fontSize: 12,
     marginBottom: 8,
   },
-  quickAmounts: {
+  quickAmountsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  quickAmount: {
+  quickAmountButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
+    borderWidth: 1,
   },
   quickAmountText: {
     fontSize: 12,
     fontWeight: '500',
   },
-  loadingText: {
-    textAlign: 'center',
-    padding: 20,
-    fontSize: 14,
-  },
-  categoryScroll: {
-    marginHorizontal: -16,
-    paddingHorizontal: 16,
-  },
-  categoryItem: {
+  dateButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    marginRight: 12,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    minWidth: 90,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
   },
-  categoryItemSelected: {
-    borderWidth: 2,
-  },
-  categoryText: {
-    fontSize: 12,
-    marginTop: 8,
-    textAlign: 'center',
+  dateButtonText: {
+    flex: 1,
+    fontSize: 14,
     fontWeight: '500',
   },
-  paymentMethodGrid: {
+  recurrenceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  recurrenceConfig: {
+    paddingTop: 8,
+  },
+  recurrenceOptions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  paymentMethodItem: {
+  recurrenceOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  recurrenceOptionText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  intervalContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+  },
+  intervalInput: {
+    flex: 0,
+    minWidth: 80,
+  },
+  intervalLabel: {
+    fontSize: 14,
+  },
+  previewContainer: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 8,
+  },
+  previewDate: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  noCategoriesContainer: {
+    alignItems: 'center',
+    padding: 24,
+  },
+  noCategoriesTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  noCategoriesSubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  createCategoryButton: {
+    minWidth: 150,
+  },
+  categoriesScroll: {
+    marginVertical: 4,
+  },
+  categoryItem: {
+    alignItems: 'center',
+    marginRight: 12,
     padding: 12,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: 'transparent',
-    gap: 8,
-    minWidth: '48%',
+    minWidth: 80,
   },
-  paymentMethodSelected: {
-    borderWidth: 2,
+  categoryIcon: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  categoryName: {
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  paymentMethodsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  paymentMethodButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 6,
   },
   paymentMethodText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '500',
   },
   footer: {
@@ -666,14 +1029,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 8,
     gap: 8,
-    marginBottom: 12,
   },
   successText: {
     fontSize: 14,
     fontWeight: '600',
   },
   saveButton: {
-    minHeight: 56,
+    marginTop: 8,
   },
 });

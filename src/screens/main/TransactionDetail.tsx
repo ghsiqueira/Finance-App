@@ -64,6 +64,54 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
     },
   });
 
+  const getPaymentMethodLabel = (method: string): string => {
+    const labels: Record<string, string> = {
+      cash: 'Dinheiro',
+      credit_card: 'Cartão de Crédito',
+      debit_card: 'Cartão de Débito',
+      bank_transfer: 'Transferência',
+      pix: 'PIX',
+      other: 'Outro',
+    };
+    
+    return labels[method] || method;
+  };
+
+  const getPaymentMethodIcon = (method: string): keyof typeof Ionicons.glyphMap => {
+    const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
+      cash: 'cash-outline',
+      credit_card: 'card-outline',
+      debit_card: 'card-outline',
+      bank_transfer: 'swap-horizontal-outline',
+      pix: 'flash-outline',
+      other: 'ellipsis-horizontal-outline',
+    };
+    
+    return icons[method] || 'help-outline';
+  };
+
+  const getRecurrenceLabel = (config?: any): string => {
+    if (!config) return '';
+    
+    const frequencyLabels: Record<string, string> = {
+      daily: 'diariamente',
+      weekly: 'semanalmente',
+      monthly: 'mensalmente',
+      yearly: 'anualmente',
+    };
+    
+    const interval = config.interval || 1;
+    const frequency = frequencyLabels[config.frequency] || '';
+    
+    if (interval === 1) {
+      return frequency;
+    }
+    
+    return `a cada ${interval} ${config.frequency === 'daily' ? 'dias' : 
+                                 config.frequency === 'weekly' ? 'semanas' :
+                                 config.frequency === 'monthly' ? 'meses' : 'anos'}`;
+  };
+
   const handleEdit = () => {
     navigation.navigate('EditTransaction', { transactionId });
   };
@@ -115,82 +163,35 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
 📅 Data: ${format(new Date(transactionData.date), 'dd/MM/yyyy', { locale: ptBR })}
 🏷️ Categoria: ${transactionData.category?.name || 'Sem categoria'}
 💳 Pagamento: ${getPaymentMethodLabel(transactionData.paymentMethod)}
-${transactionData.notes ? `📝 Observações: ${transactionData.notes}` : ''}
+${transactionData.notes ? `📝 Notas: ${transactionData.notes}` : ''}
+${transactionData.isRecurring ? `🔄 Recorrente: ${getRecurrenceLabel(transactionData.recurringConfig)}` : ''}
 
-Compartilhado via Finance App
+📱 Gerado pelo App Financeiro
     `.trim();
 
     try {
       await Share.share({
         message: shareText,
-        title: 'Detalhes da Transação',
+        title: `Transação: ${transactionData.description}`,
       });
     } catch (error) {
-      console.log('Error sharing:', error);
-    }
-  };
-
-  const getPaymentMethodLabel = (method: string): string => {
-    const labels: Record<string, string> = {
-      cash: 'Dinheiro',
-      credit_card: 'Cartão de Crédito',
-      debit_card: 'Cartão de Débito',
-      bank_transfer: 'Transferência',
-      pix: 'PIX',
-      other: 'Outro',
-    };
-    return labels[method] || method;
-  };
-
-  const getPaymentMethodIcon = (method: string): string => {
-    const icons: Record<string, string> = {
-      cash: 'cash-outline',
-      credit_card: 'card-outline',
-      debit_card: 'card-outline',
-      bank_transfer: 'swap-horizontal-outline',
-      pix: 'flash-outline',
-      other: 'ellipsis-horizontal-outline',
-    };
-    return icons[method] || 'help-outline';
-  };
-
-  const getStatusInfo = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return {
-          label: 'Concluída',
-          color: themeConfig.colors.success,
-          icon: 'checkmark-circle',
-        };
-      case 'pending':
-        return {
-          label: 'Pendente',
-          color: themeConfig.colors.warning,
-          icon: 'time',
-        };
-      case 'cancelled':
-        return {
-          label: 'Cancelada',
-          color: themeConfig.colors.error,
-          icon: 'close-circle',
-        };
-      default:
-        return {
-          label: status,
-          color: themeConfig.colors.textSecondary,
-          icon: 'help-circle',
-        };
+      console.error('Erro ao compartilhar:', error);
     }
   };
 
   if (isLoading) {
-    return <Loading />;
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: themeConfig.colors.background }]}>
+        <Header title="Detalhes da Transação" showBackButton onBackPress={() => navigation.goBack()} />
+        <Loading />
+      </SafeAreaView>
+    );
   }
 
   if (error || !transaction?.data?.transaction) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: themeConfig.colors.background }]}>
-        <Header title="Transação" showBackButton onBackPress={() => navigation.goBack()} />
+        <Header title="Detalhes da Transação" showBackButton onBackPress={() => navigation.goBack()} />
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle-outline" size={64} color={themeConfig.colors.error} />
           <Text style={[styles.errorTitle, { color: themeConfig.colors.error }]}>
@@ -210,7 +211,6 @@ Compartilhado via Finance App
   }
 
   const transactionData = transaction.data.transaction;
-  const statusInfo = getStatusInfo(transactionData.status);
   const isIncome = transactionData.type === 'income';
 
   return (
@@ -219,6 +219,11 @@ Compartilhado via Finance App
         title="Detalhes da Transação"
         showBackButton
         onBackPress={() => navigation.goBack()}
+        rightElement={
+          <TouchableOpacity onPress={handleShare} style={styles.shareButton}>
+            <Ionicons name="share-outline" size={24} color={themeConfig.colors.primary} />
+          </TouchableOpacity>
+        }
       />
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -239,16 +244,14 @@ Compartilhado via Finance App
             <View style={styles.mainInfo}>
               <Text style={[styles.transactionType, { color: themeConfig.colors.textSecondary }]}>
                 {isIncome ? 'Receita' : 'Gasto'}
+                {transactionData.isRecurring && (
+                  <Text style={[styles.recurrentBadge, { color: themeConfig.colors.primary }]}>
+                    {' '}• Recorrente
+                  </Text>
+                )}
               </Text>
               <Text style={[styles.transactionDescription, { color: themeConfig.colors.text }]}>
                 {transactionData.description}
-              </Text>
-            </View>
-
-            <View style={[styles.statusBadge, { backgroundColor: statusInfo.color + '20' }]}>
-              <Ionicons name={statusInfo.icon as any} size={16} color={statusInfo.color} />
-              <Text style={[styles.statusText, { color: statusInfo.color }]}>
-                {statusInfo.label}
               </Text>
             </View>
           </View>
@@ -258,10 +261,7 @@ Compartilhado via Finance App
               styles.amount,
               { color: isIncome ? themeConfig.colors.success : themeConfig.colors.error }
             ]}>
-              {isIncome ? '+' : '-'} {formatCurrency(transactionData.amount)}
-            </Text>
-            <Text style={[styles.amountDate, { color: themeConfig.colors.textSecondary }]}>
-              {format(new Date(transactionData.date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+              {isIncome ? '+' : '-'}{formatCurrency(transactionData.amount)}
             </Text>
           </View>
         </Card>
@@ -269,37 +269,62 @@ Compartilhado via Finance App
         {/* Details Card */}
         <Card variant="elevated" style={styles.detailsCard}>
           <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-            Informações Detalhadas
+            Detalhes
           </Text>
 
           <View style={styles.detailsList}>
-            {/* Category */}
+            {/* Data */}
             <View style={styles.detailItem}>
               <View style={styles.detailIcon}>
-                <Ionicons name="pricetag-outline" size={20} color={themeConfig.colors.textSecondary} />
+                <Ionicons name="calendar-outline" size={20} color={themeConfig.colors.primary} />
+              </View>
+              <View style={styles.detailContent}>
+                <Text style={[styles.detailLabel, { color: themeConfig.colors.textSecondary }]}>
+                  Data
+                </Text>
+                <Text style={[styles.detailValue, { color: themeConfig.colors.text }]}>
+                  {format(new Date(transactionData.date), "dd 'de' MMMM 'de' yyyy (EEEE)", { locale: ptBR })}
+                </Text>
+              </View>
+            </View>
+
+            {/* Categoria */}
+            <View style={styles.detailItem}>
+              <View style={styles.detailIcon}>
+                <Ionicons 
+                  name="pricetag-outline" 
+                  size={20} 
+                  color={transactionData.category?.color || themeConfig.colors.textSecondary} 
+                />
               </View>
               <View style={styles.detailContent}>
                 <Text style={[styles.detailLabel, { color: themeConfig.colors.textSecondary }]}>
                   Categoria
                 </Text>
-                <View style={styles.categoryRow}>
-                  {transactionData.category && (
-                    <View style={[styles.categoryColor, { backgroundColor: transactionData.category.color }]} />
+                <View style={styles.categoryInfo}>
+                  {transactionData.category ? (
+                    <>
+                      <Text style={styles.categoryIcon}>{transactionData.category.icon}</Text>
+                      <Text style={[styles.detailValue, { color: themeConfig.colors.text }]}>
+                        {transactionData.category.name}
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={[styles.detailValue, { color: themeConfig.colors.textLight }]}>
+                      Sem categoria
+                    </Text>
                   )}
-                  <Text style={[styles.detailValue, { color: themeConfig.colors.text }]}>
-                    {transactionData.category?.name || 'Sem categoria'}
-                  </Text>
                 </View>
               </View>
             </View>
 
-            {/* Payment Method */}
+            {/* Método de Pagamento */}
             <View style={styles.detailItem}>
               <View style={styles.detailIcon}>
-                <Ionicons
-                  name={getPaymentMethodIcon(transactionData.paymentMethod) as any}
-                  size={20}
-                  color={themeConfig.colors.textSecondary}
+                <Ionicons 
+                  name={getPaymentMethodIcon(transactionData.paymentMethod)} 
+                  size={20} 
+                  color={themeConfig.colors.primary} 
                 />
               </View>
               <View style={styles.detailContent}>
@@ -312,43 +337,42 @@ Compartilhado via Finance App
               </View>
             </View>
 
-            {/* Date & Time */}
-            <View style={styles.detailItem}>
-              <View style={styles.detailIcon}>
-                <Ionicons name="calendar-outline" size={20} color={themeConfig.colors.textSecondary} />
-              </View>
-              <View style={styles.detailContent}>
-                <Text style={[styles.detailLabel, { color: themeConfig.colors.textSecondary }]}>
-                  Data e Hora
-                </Text>
-                <Text style={[styles.detailValue, { color: themeConfig.colors.text }]}>
-                  {format(new Date(transactionData.date), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                </Text>
-              </View>
-            </View>
-
-            {/* Tags */}
-            {transactionData.tags && transactionData.tags.length > 0 && (
+            {/* Recorrência */}
+            {transactionData.isRecurring && (
               <View style={styles.detailItem}>
                 <View style={styles.detailIcon}>
-                  <Ionicons name="bookmark-outline" size={20} color={themeConfig.colors.textSecondary} />
+                  <Ionicons name="repeat-outline" size={20} color={themeConfig.colors.primary} />
                 </View>
                 <View style={styles.detailContent}>
                   <Text style={[styles.detailLabel, { color: themeConfig.colors.textSecondary }]}>
-                    Tags
+                    Recorrência
                   </Text>
-                  <View style={styles.tagsContainer}>
-                    {transactionData.tags.map((tag: string, index: number) => (
-                      <View key={index} style={[styles.tag, { backgroundColor: themeConfig.colors.primary + '20' }]}>
-                        <Text style={[styles.tagText, { color: themeConfig.colors.primary }]}>
-                          {tag}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
+                  <Text style={[styles.detailValue, { color: themeConfig.colors.text }]}>
+                    Repete {getRecurrenceLabel(transactionData.recurringConfig)}
+                  </Text>
+                  {transactionData.recurringConfig?.endDate && (
+                    <Text style={[styles.detailSubValue, { color: themeConfig.colors.textLight }]}>
+                      Até {format(new Date(transactionData.recurringConfig.endDate), 'dd/MM/yyyy', { locale: ptBR })}
+                    </Text>
+                  )}
                 </View>
               </View>
             )}
+
+            {/* Data de Criação */}
+            <View style={styles.detailItem}>
+              <View style={styles.detailIcon}>
+                <Ionicons name="time-outline" size={20} color={themeConfig.colors.textSecondary} />
+              </View>
+              <View style={styles.detailContent}>
+                <Text style={[styles.detailLabel, { color: themeConfig.colors.textSecondary }]}>
+                  Criada em
+                </Text>
+                <Text style={[styles.detailValue, { color: themeConfig.colors.text }]}>
+                  {format(new Date(transactionData.createdAt), 'dd/MM/yyyy às HH:mm', { locale: ptBR })}
+                </Text>
+              </View>
+            </View>
           </View>
         </Card>
 
@@ -369,7 +393,7 @@ Compartilhado via Finance App
           <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
             Ações
           </Text>
-
+          
           <View style={styles.actionsList}>
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: themeConfig.colors.primary + '15' }]}
@@ -382,39 +406,34 @@ Compartilhado via Finance App
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: themeConfig.colors.success + '15' }]}
+              style={[styles.actionButton, { backgroundColor: themeConfig.colors.warning + '15' }]}
               onPress={handleDuplicate}
             >
-              <Ionicons name="copy" size={20} color={themeConfig.colors.success} />
-              <Text style={[styles.actionButtonText, { color: themeConfig.colors.success }]}>
-                Duplicar Transação
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: themeConfig.colors.warning + '15' }]}
-              onPress={handleShare}
-            >
-              <Ionicons name="share" size={20} color={themeConfig.colors.warning} />
+              <Ionicons name="copy" size={20} color={themeConfig.colors.warning} />
               <Text style={[styles.actionButtonText, { color: themeConfig.colors.warning }]}>
-                Compartilhar
+                Duplicar Transação
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: themeConfig.colors.error + '15' }]}
               onPress={handleDelete}
-              disabled={isDeleting || deleteTransactionMutation.isPending}
+              disabled={deleteTransactionMutation.isPending}
             >
-              <Ionicons name="trash" size={20} color={themeConfig.colors.error} />
+              <Ionicons 
+                name={deleteTransactionMutation.isPending ? "hourglass" : "trash"} 
+                size={20} 
+                color={themeConfig.colors.error} 
+              />
               <Text style={[styles.actionButtonText, { color: themeConfig.colors.error }]}>
-                {isDeleting || deleteTransactionMutation.isPending ? 'Excluindo...' : 'Excluir Transação'}
+                {deleteTransactionMutation.isPending ? 'Excluindo...' : 'Excluir Transação'}
               </Text>
             </TouchableOpacity>
           </View>
         </Card>
 
-        <View style={styles.bottomSpacer} />
+        {/* Espaçamento inferior */}
+        <View style={{ height: 20 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -428,27 +447,8 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  errorTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginTop: 16,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  errorMessage: {
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 24,
-  },
-  errorButton: {
-    minWidth: 120,
+  shareButton: {
+    padding: 8,
   },
   mainCard: {
     marginBottom: 16,
@@ -456,12 +456,12 @@ const styles = StyleSheet.create({
   mainHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   typeIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
@@ -470,45 +470,36 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   transactionType: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '500',
-    textTransform: 'uppercase',
     marginBottom: 4,
   },
-  transactionDescription: {
-    fontSize: 18,
-    fontWeight: '600',
-    lineHeight: 24,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  statusText: {
+  recurrentBadge: {
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
+  },
+  transactionDescription: {
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 26,
   },
   amountContainer: {
     alignItems: 'center',
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
   },
   amount: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  amountDate: {
-    fontSize: 14,
+    fontSize: 36,
+    fontWeight: '800',
+    textAlign: 'center',
   },
   detailsCard: {
     marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: '700',
     marginBottom: 16,
   },
   detailsList: {
@@ -520,50 +511,46 @@ const styles = StyleSheet.create({
   },
   detailIcon: {
     width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 2,
+    marginRight: 12,
   },
   detailContent: {
     flex: 1,
   },
   detailLabel: {
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
     marginBottom: 4,
   },
   detailValue: {
     fontSize: 16,
+    fontWeight: '500',
+    lineHeight: 22,
   },
-  categoryRow: {
+  detailSubValue: {
+    fontSize: 14,
+    marginTop: 2,
+  },
+  categoryInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
-  categoryColor: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  tagsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  tag: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  tagText: {
-    fontSize: 12,
-    fontWeight: '500',
+  categoryIcon: {
+    fontSize: 16,
+    marginRight: 8,
   },
   notesCard: {
     marginBottom: 16,
   },
   notesText: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 16,
+    lineHeight: 24,
   },
   actionsCard: {
     marginBottom: 16,
@@ -580,9 +567,28 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
   },
-  bottomSpacer: {
-    height: 24,
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  errorButton: {
+    minWidth: 120,
   },
 });

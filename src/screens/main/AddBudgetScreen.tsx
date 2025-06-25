@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+// src/screens/main/AddBudgetScreen.tsx - Criar orçamento com seleção de categorias
+
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,6 +16,8 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as yup from 'yup';
+import { addMonths, addWeeks, addYears, format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 import Header from '../../components/common/Header';
 import Button from '../../components/common/Button';
@@ -23,29 +27,32 @@ import Loading from '../../components/common/Loading';
 import { useThemeStore } from '../../store/themeStore';
 import { getTheme } from '../../styles/theme';
 import { budgetService } from '../../services/api/budgets';
-import { categoryService } from '../../services/api/categories';
 import { formatInputCurrency, parseNumber } from '../../utils/formatters';
-import type { MainStackScreenProps } from '../../navigation/types';
-import type { Category } from '../../types';
+import type { MainStackScreenProps, Category, BudgetForm } from '../../types';
 
 type Props = MainStackScreenProps<'AddBudget'>;
 
-interface BudgetForm {
-  name: string;
-  amount: string;
-  categoryId: string;
-  description?: string;
-}
-
 const budgetSchema = yup.object().shape({
-  name: yup.string().required('Nome obrigatório'),
-  amount: yup.string().required('Valor obrigatório'),
-  categoryId: yup.string().required('Categoria obrigatória'),
-  description: yup.string().optional(),
+  name: yup.string().required('Nome é obrigatório'),
+  amount: yup.string().required('Valor é obrigatório'),
+  categoryId: yup.string().required('Categoria é obrigatória'),
+  period: yup.string().required('Período é obrigatório'),
+  alertThreshold: yup.number().min(1).max(100).required(),
+  notes: yup.string().optional(),
 });
+
+const periodOptions = [
+  { value: 'weekly', label: 'Semanal', icon: 'calendar-outline', days: 7 },
+  { value: 'monthly', label: 'Mensal', icon: 'calendar-outline', days: 30 },
+  { value: 'quarterly', label: 'Trimestral', icon: 'calendar-outline', days: 90 },
+  { value: 'yearly', label: 'Anual', icon: 'calendar-outline', days: 365 },
+];
 
 export default function AddBudgetScreen({ navigation }: Props) {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('monthly');
+  const [showSuggestion, setShowSuggestion] = useState(false);
+  
   const { theme } = useThemeStore();
   const themeConfig = getTheme(theme);
   const queryClient = useQueryClient();
@@ -54,33 +61,44 @@ export default function AddBudgetScreen({ navigation }: Props) {
     control,
     handleSubmit,
     setValue,
-    formState: { errors, isValid },
     watch,
+    formState: { errors, isValid },
   } = useForm<BudgetForm>({
     resolver: yupResolver(budgetSchema) as any,
     defaultValues: {
       name: '',
       amount: '',
       categoryId: '',
-      description: '',
+      period: 'monthly' as any,
+      alertThreshold: 80,
+      notes: '',
     },
   });
 
-  const amount = watch('amount');
+  const watchedAmount = watch('amount');
+  const watchedName = watch('name');
 
-  // Fetch categories
-  const { data: categories, isLoading: categoriesLoading } = useQuery({
-    queryKey: ['categories'],
-    queryFn: () => categoryService.getCategories(),
+  // Fetch categorias disponíveis
+  const { data: categoriesResponse, isLoading: categoriesLoading } = useQuery({
+    queryKey: ['available-categories'],
+    queryFn: () => budgetService.getAvailableCategories(),
+  });
+
+  // Fetch sugestão de valor
+  const { data: suggestionResponse, isLoading: suggestionLoading } = useQuery({
+    queryKey: ['budget-suggestion', selectedCategory, selectedPeriod],
+    queryFn: () => budgetService.suggestBudgetAmount(selectedCategory, selectedPeriod),
+    enabled: !!selectedCategory && !!selectedPeriod,
   });
 
   // Create budget mutation
   const createBudgetMutation = useMutation({
-    mutationFn: (data: any) => budgetService.createBudget(data),
+    mutationFn: (data: BudgetForm) => budgetService.createBudget(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       Alert.alert(
-        'Sucesso!',
+        '🎉 Sucesso!',
         'Orçamento criado com sucesso!',
         [
           {
@@ -98,31 +116,35 @@ export default function AddBudgetScreen({ navigation }: Props) {
     },
   });
 
+  const categories = categoriesResponse?.data?.categories || [];
+  const suggestion = suggestionResponse?.data;
+
+  useEffect(() => {
+    if (selectedCategory) {
+      setValue('categoryId', selectedCategory);
+      
+      // Auto-gerar nome do orçamento
+      const category = categories.find(c => c._id === selectedCategory);
+      if (category) {
+        const periodLabel = periodOptions.find(p => p.value === selectedPeriod)?.label || 'Mensal';
+        const currentMonth = format(new Date(), 'MMM/yyyy', { locale: ptBR });
+        setValue('name', `${category.name} - ${periodLabel} ${currentMonth}`);
+      }
+    }
+  }, [selectedCategory, selectedPeriod, categories, setValue]);
+
+  useEffect(() => {
+    setValue('period', selectedPeriod as any);
+  }, [selectedPeriod, setValue]);
+
   const onSubmit = async (data: BudgetForm) => {
     const budgetData = {
-      name: data.name,
-      amount: parseNumber(data.amount),
-      categoryId: data.categoryId,
-      description: data.description || '',
-      period: 'monthly' as const,
-      startDate: new Date(),
-      endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-      alertThreshold: 80,
-      color: '#3b82f6',
+      ...data,
+      categoryId: selectedCategory,
+      period: selectedPeriod as any,
     };
 
     createBudgetMutation.mutate(budgetData);
-  };
-
-  const handleCategorySelect = (categoryId: string) => {
-    setSelectedCategory(categoryId);
-    setValue('categoryId', categoryId, { shouldValidate: true });
-    
-    // Auto-fill budget name with category name if name is empty
-    const category = categories?.data?.categories?.find((c: any) => c._id === categoryId);
-    if (category && !watch('name')) {
-      setValue('name', `Orçamento ${category.name}`);
-    }
   };
 
   const handleAmountChange = (value: string) => {
@@ -130,76 +152,138 @@ export default function AddBudgetScreen({ navigation }: Props) {
     setValue('amount', formatted, { shouldValidate: true });
   };
 
-  const renderCategoryItem = ({ item }: { item: Category }) => {
-    const isSelected = selectedCategory === item._id;
+  const applySuggestion = () => {
+    if (suggestion) {
+      handleAmountChange((suggestion.suggestedAmount * 100).toString());
+      setShowSuggestion(false);
+    }
+  };
+
+  const getEndDate = () => {
+    const now = new Date();
+    switch (selectedPeriod) {
+      case 'weekly':
+        return addWeeks(now, 1);
+      case 'quarterly':
+        return addMonths(now, 3);
+      case 'yearly':
+        return addYears(now, 1);
+      default:
+        return addMonths(now, 1);
+    }
+  };
+
+  const getDailyBudget = () => {
+    const amount = parseNumber(watchedAmount);
+    const period = periodOptions.find(p => p.value === selectedPeriod);
+    return period ? amount / period.days : 0;
+  };
+
+  const renderCategoryItem = (category: any) => {
+    const isSelected = selectedCategory === category._id;
     
     return (
       <TouchableOpacity
+        key={category._id}
         style={[
           styles.categoryItem,
           {
             backgroundColor: isSelected 
-              ? themeConfig.colors.primary + '20' 
+              ? category.color + '20' 
               : themeConfig.colors.card,
             borderColor: isSelected 
-              ? themeConfig.colors.primary 
+              ? category.color 
               : themeConfig.colors.border,
           }
         ]}
-        onPress={() => handleCategorySelect(item._id)}
+        onPress={() => setSelectedCategory(category._id)}
       >
-        <View style={[styles.categoryIcon, { backgroundColor: item.color + '20' }]}>
-          <Ionicons name={item.icon as any} size={24} color={item.color} />
+        <View style={[styles.categoryIcon, { backgroundColor: category.color + '20' }]}>
+          <Text style={styles.categoryEmoji}>{category.icon}</Text>
         </View>
-        <View style={styles.categoryInfo}>
+        
+        <View style={styles.categoryContent}>
           <Text style={[
             styles.categoryName, 
-            { 
-              color: isSelected 
-                ? themeConfig.colors.primary 
-                : themeConfig.colors.text 
-            }
+            { color: isSelected ? category.color : themeConfig.colors.text }
           ]}>
-            {item.name}
+            {category.name}
           </Text>
-          {item.description && (
-            <Text style={[styles.categoryDescription, { color: themeConfig.colors.textSecondary }]}>
-              {item.description}
+          
+          {category.hasBudget && (
+            <Text style={[styles.categoryStatus, { color: themeConfig.colors.warning }]}>
+              ⚠️ Já tem orçamento
             </Text>
           )}
         </View>
+
         {isSelected && (
           <Ionicons 
             name="checkmark-circle" 
-            size={20} 
-            color={themeConfig.colors.primary} 
+            size={24} 
+            color={category.color} 
           />
         )}
       </TouchableOpacity>
     );
   };
 
-  if (categoriesLoading) {
-    return <Loading />;
-  }
+  const renderPeriodButton = (period: typeof periodOptions[0]) => {
+    const isSelected = selectedPeriod === period.value;
+    
+    return (
+      <TouchableOpacity
+        key={period.value}
+        style={[
+          styles.periodButton,
+          {
+            backgroundColor: isSelected 
+              ? themeConfig.colors.primary + '20' 
+              : 'transparent',
+            borderColor: isSelected 
+              ? themeConfig.colors.primary 
+              : themeConfig.colors.border,
+          }
+        ]}
+        onPress={() => setSelectedPeriod(period.value)}
+      >
+        <Ionicons 
+          name={period.icon as any} 
+          size={20} 
+          color={isSelected ? themeConfig.colors.primary : themeConfig.colors.textSecondary} 
+        />
+        <Text style={[
+          styles.periodButtonText,
+          { color: isSelected ? themeConfig.colors.primary : themeConfig.colors.textSecondary }
+        ]}>
+          {period.label}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
 
-  const expenseCategories = categories?.data?.categories?.filter((cat: any) => 
-    cat.type === 'expense' || cat.type === 'both'
-  ) || [];
+  if (categoriesLoading) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: themeConfig.colors.background }]}>
+        <Header title="Criar Orçamento" showBackButton onBackPress={() => navigation.goBack()} />
+        <Loading />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: themeConfig.colors.background }]}>
       <Header 
-        title="Novo Orçamento" 
+        title="💰 Criar Orçamento" 
         showBackButton 
-        onBackPress={() => navigation.goBack()}
+        onBackPress={() => navigation.goBack()} 
       />
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Budget Info Card */}
-        <Card variant="elevated" style={styles.infoCard}>
+        {/* Básico */}
+        <Card style={styles.section}>
           <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-            Informações do Orçamento
+            📝 Informações Básicas
           </Text>
 
           <Controller
@@ -208,14 +292,14 @@ export default function AddBudgetScreen({ navigation }: Props) {
             render={({ field: { onChange, onBlur, value } }) => (
               <Input
                 label="Nome do Orçamento"
-                placeholder="Ex: Alimentação, Transporte..."
+                placeholder="Ex: Alimentação - Mensal Dez/24"
                 value={value}
                 onChangeText={onChange}
                 onBlur={onBlur}
                 error={errors.name?.message}
                 leftIcon={
                   <Ionicons 
-                    name="pricetag-outline" 
+                    name="document-text-outline" 
                     size={20} 
                     color={themeConfig.colors.textSecondary} 
                   />
@@ -227,9 +311,9 @@ export default function AddBudgetScreen({ navigation }: Props) {
           <Controller
             name="amount"
             control={control}
-            render={({ field: { onBlur, value } }) => (
+            render={({ field: { onChange, onBlur, value } }) => (
               <Input
-                label="Valor do Orçamento"
+                label="💰 Valor do Orçamento"
                 placeholder="R$ 0,00"
                 value={value}
                 onChangeText={handleAmountChange}
@@ -247,16 +331,141 @@ export default function AddBudgetScreen({ navigation }: Props) {
             )}
           />
 
+          {/* Preview do orçamento */}
+          {parseNumber(watchedAmount) > 0 && (
+            <View style={[styles.previewCard, { backgroundColor: themeConfig.colors.primary + '10' }]}>
+              <Text style={[styles.previewTitle, { color: themeConfig.colors.primary }]}>
+                💡 Preview do Orçamento
+              </Text>
+              <Text style={[styles.previewText, { color: themeConfig.colors.text }]}>
+                • Valor total: {watchedAmount}
+              </Text>
+              <Text style={[styles.previewText, { color: themeConfig.colors.text }]}>
+                • Período: {format(new Date(), 'dd/MM')} até {format(getEndDate(), 'dd/MM/yyyy')}
+              </Text>
+              <Text style={[styles.previewText, { color: themeConfig.colors.text }]}>
+                • Limite diário: R$ {getDailyBudget().toFixed(2)}
+              </Text>
+            </View>
+          )}
+        </Card>
+
+        {/* Período */}
+        <Card style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
+            📅 Período do Orçamento
+          </Text>
+          
+          <View style={styles.periodGrid}>
+            {periodOptions.map(renderPeriodButton)}
+          </View>
+        </Card>
+
+        {/* Categorias */}
+        <Card style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
+            🏷️ Escolha a Categoria
+          </Text>
+          
+          {categories.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="folder-open-outline" size={48} color={themeConfig.colors.textLight} />
+              <Text style={[styles.emptyStateTitle, { color: themeConfig.colors.textSecondary }]}>
+                Nenhuma categoria encontrada
+              </Text>
+              <Button
+                title="Criar Categoria"
+                onPress={() => navigation.navigate('CategoryManagement')}
+                variant="outline"
+                style={styles.createCategoryButton}
+              />
+            </View>
+          ) : (
+            <FlatList
+              data={categories}
+              renderItem={({ item }) => renderCategoryItem(item)}
+              keyExtractor={(item) => item._id}
+              numColumns={2}
+              columnWrapperStyle={styles.categoryRow}
+              scrollEnabled={false}
+            />
+          )}
+        </Card>
+
+        {/* Sugestão IA */}
+        {suggestion && selectedCategory && (
+          <Card style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
+              🤖 Sugestão Inteligente
+            </Text>
+            
+            <View style={[styles.suggestionCard, { backgroundColor: themeConfig.colors.success + '10' }]}>
+              <View style={styles.suggestionHeader}>
+                <Ionicons name="bulb" size={20} color={themeConfig.colors.success} />
+                <Text style={[styles.suggestionTitle, { color: themeConfig.colors.success }]}>
+                  Baseado no seu histórico
+                </Text>
+              </View>
+              
+              <Text style={[styles.suggestionAmount, { color: themeConfig.colors.text }]}>
+                Valor sugerido: R$ {suggestion.suggestedAmount.toFixed(2)}
+              </Text>
+              
+              <Text style={[styles.suggestionDetail, { color: themeConfig.colors.textSecondary }]}>
+                Baseado em {suggestion.basedOnMonths} meses de gastos
+              </Text>
+              
+              <Button
+                title="Aplicar Sugestão"
+                onPress={applySuggestion}
+                variant="outline"
+                style={styles.suggestionButton}
+                leftIcon={<Ionicons name="checkmark" size={16} color={themeConfig.colors.success} />}
+              />
+            </View>
+          </Card>
+        )}
+
+        {/* Configurações */}
+        <Card style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
+            ⚙️ Configurações
+          </Text>
+
           <Controller
-            name="description"
+            name="alertThreshold"
             control={control}
             render={({ field: { onChange, onBlur, value } }) => (
               <Input
-                label="Descrição (Opcional)"
-                placeholder="Adicione uma descrição para este orçamento..."
+                label="🚨 Alerta aos (% do limite)"
+                placeholder="80"
+                value={value?.toString()}
+                onChangeText={(text) => onChange(parseInt(text) || 80)}
+                onBlur={onBlur}
+                error={errors.alertThreshold?.message}
+                keyboardType="numeric"
+                leftIcon={
+                  <Ionicons 
+                    name="warning-outline" 
+                    size={20} 
+                    color={themeConfig.colors.textSecondary} 
+                  />
+                }
+              />
+            )}
+          />
+
+          <Controller
+            name="notes"
+            control={control}
+            render={({ field: { onChange, onBlur, value } }) => (
+              <Input
+                label="📝 Observações (Opcional)"
+                placeholder="Notas sobre este orçamento..."
                 value={value}
                 onChangeText={onChange}
                 onBlur={onBlur}
+                error={errors.notes?.message}
                 multiline
                 numberOfLines={3}
                 leftIcon={
@@ -271,131 +480,29 @@ export default function AddBudgetScreen({ navigation }: Props) {
           />
         </Card>
 
-        {/* Category Selection */}
-        <Card variant="elevated" style={styles.categoryCard}>
-          <View style={styles.categoryHeader}>
-            <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-              Selecionar Categoria
-            </Text>
-            {errors.categoryId && (
-              <Text style={[styles.errorText, { color: themeConfig.colors.error }]}>
-                {errors.categoryId.message}
-              </Text>
-            )}
-          </View>
-
-          {expenseCategories.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons 
-                name="folder-outline" 
-                size={48} 
-                color={themeConfig.colors.textLight} 
-              />
-              <Text style={[styles.emptyStateText, { color: themeConfig.colors.textSecondary }]}>
-                Nenhuma categoria de despesa encontrada
-              </Text>
-              <Button
-                title="Criar Categoria"
-                variant="outline"
-                onPress={() => {
-                  // Navigate to category management
-                  Alert.alert('Info', 'Funcionalidade será implementada em breve');
-                }}
-                style={styles.createCategoryButton}
-              />
-            </View>
-          ) : (
-            <FlatList
-              data={expenseCategories}
-              keyExtractor={(item) => item._id}
-              renderItem={renderCategoryItem}
-              scrollEnabled={false}
-              ItemSeparatorComponent={() => <View style={styles.separator} />}
-            />
-          )}
-        </Card>
-
-        {/* Budget Preview */}
-        {amount && selectedCategory && (
-          <Card variant="elevated" style={styles.previewCard}>
-            <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-              Resumo do Orçamento
-            </Text>
-            
-            <View style={styles.previewContent}>
-              <View style={styles.previewItem}>
-                <Text style={[styles.previewLabel, { color: themeConfig.colors.textSecondary }]}>
-                  Categoria
-                </Text>
-                <Text style={[styles.previewValue, { color: themeConfig.colors.text }]}>
-                  {categories?.data?.categories?.find((c: any) => c._id === selectedCategory)?.name}
-                </Text>
-              </View>
-              
-              <View style={styles.previewItem}>
-                <Text style={[styles.previewLabel, { color: themeConfig.colors.textSecondary }]}>
-                  Valor Mensal
-                </Text>
-                <Text style={[styles.previewValue, { color: themeConfig.colors.primary }]}>
-                  R$ {parseNumber(amount).toLocaleString('pt-BR', { 
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2 
-                  })}
-                </Text>
-              </View>
-
-              <View style={styles.previewItem}>
-                <Text style={[styles.previewLabel, { color: themeConfig.colors.textSecondary }]}>
-                  Valor Diário Médio
-                </Text>
-                <Text style={[styles.previewValue, { color: themeConfig.colors.textSecondary }]}>
-                  R$ {(parseNumber(amount) / 30).toLocaleString('pt-BR', { 
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2 
-                  })}
-                </Text>
-              </View>
-            </View>
-          </Card>
-        )}
-
-        {/* Tips Card */}
-        <Card variant="elevated" style={styles.tipsCard}>
-          <View style={styles.tipsHeader}>
-            <Ionicons name="bulb-outline" size={20} color={themeConfig.colors.warning} />
-            <Text style={[styles.tipsTitle, { color: themeConfig.colors.text }]}>
-              Dicas para um bom orçamento
-            </Text>
-          </View>
-          
-          <View style={styles.tipsList}>
-            <Text style={[styles.tipItem, { color: themeConfig.colors.textSecondary }]}>
-              • Use a regra 50/30/20: 50% necessidades, 30% desejos, 20% poupança
-            </Text>
-            <Text style={[styles.tipItem, { color: themeConfig.colors.textSecondary }]}>
-              • Monitore seus gastos semanalmente
-            </Text>
-            <Text style={[styles.tipItem, { color: themeConfig.colors.textSecondary }]}>
-              • Deixe uma margem de 10% para imprevistos
-            </Text>
-            <Text style={[styles.tipItem, { color: themeConfig.colors.textSecondary }]}>
-              • Revise e ajuste mensalmente conforme necessário
-            </Text>
-          </View>
-        </Card>
-
-        {/* Save Button */}
-        <Button
-          title="Salvar Orçamento"
-          onPress={handleSubmit(onSubmit) as any}
-          loading={createBudgetMutation.isPending}
-          disabled={!isValid || createBudgetMutation.isPending}
-          style={styles.saveButton}
-          gradient
-        />
-
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      {/* Footer */}
+      <View style={[styles.footer, { backgroundColor: themeConfig.colors.card, borderTopColor: themeConfig.colors.border }]}>
+        <View style={styles.actionButtons}>
+          <Button
+            title="Cancelar"
+            variant="outline"
+            onPress={() => navigation.goBack()}
+            style={styles.cancelButton}
+          />
+          
+          <Button
+            title={createBudgetMutation.isPending ? "Criando..." : "💾 Criar Orçamento"}
+            onPress={handleSubmit(onSubmit)}
+            loading={createBudgetMutation.isPending}
+            disabled={createBudgetMutation.isPending || !isValid || !selectedCategory}
+            gradient
+            style={styles.createButton}
+          />
+        </View>
+      </View>
     </SafeAreaView>
   );
 }
@@ -408,16 +515,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  infoCard: {
-    marginBottom: 16,
-  },
-  categoryCard: {
-    marginBottom: 16,
-  },
-  previewCard: {
-    marginBottom: 16,
-  },
-  tipsCard: {
+  section: {
     marginBottom: 16,
   },
   sectionTitle: {
@@ -425,92 +523,131 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 16,
   },
-  categoryHeader: {
-    marginBottom: 16,
-  },
-  errorText: {
-    fontSize: 12,
-    marginTop: 4,
-  },
-  categoryItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  previewCard: {
     padding: 16,
     borderRadius: 12,
+    marginTop: 12,
+  },
+  previewTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  previewText: {
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  periodGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  periodButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
     borderWidth: 1,
+    gap: 8,
+    minWidth: '45%',
+  },
+  periodButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  categoryRow: {
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  categoryItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 2,
+    marginHorizontal: 4,
   },
   categoryIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
-  categoryInfo: {
+  categoryEmoji: {
+    fontSize: 20,
+  },
+  categoryContent: {
     flex: 1,
   },
   categoryName: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 2,
   },
-  categoryDescription: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  separator: {
-    height: 8,
+  categoryStatus: {
+    fontSize: 10,
   },
   emptyState: {
     alignItems: 'center',
     padding: 32,
   },
-  emptyStateText: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 8,
+  emptyStateTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 12,
     marginBottom: 16,
+    textAlign: 'center',
   },
   createCategoryButton: {
-    minWidth: 120,
+    minWidth: 150,
   },
-  previewContent: {
-    gap: 12,
+  suggestionCard: {
+    padding: 16,
+    borderRadius: 12,
   },
-  previewItem: {
+  suggestionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
   },
-  previewLabel: {
+  suggestionTitle: {
     fontSize: 14,
+    fontWeight: '600',
   },
-  previewValue: {
-    fontSize: 16,
-    fontWeight: '500',
+  suggestionAmount: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
   },
-  tipsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  suggestionDetail: {
+    fontSize: 12,
     marginBottom: 12,
   },
-  tipsTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginLeft: 8,
+  suggestionButton: {
+    alignSelf: 'flex-start',
   },
-  tipsList: {
-    gap: 6,
+  footer: {
+    padding: 16,
+    borderTopWidth: 1,
   },
-  tipItem: {
-    fontSize: 13,
-    lineHeight: 18,
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+  },
+  createButton: {
+    flex: 2,
   },
   bottomSpacer: {
-    height: 24,
-  },
-  saveButton: {
-    marginTop: 16,
-    marginBottom: 24,
+    height: 20,
   },
 });

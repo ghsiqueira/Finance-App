@@ -23,7 +23,7 @@ export type MainTabParamList = {
 };
 
 export type MainStackParamList = {
-  MainTabs: undefined;
+  MainTabs: { screen?: keyof MainTabParamList }; // 🔥 Corrigido: permitir parâmetros
   AddTransaction: { type?: 'income' | 'expense' };
   EditTransaction: { transactionId: string };
   AddBudget: undefined;
@@ -51,6 +51,9 @@ export type MainTabScreenProps<Screen extends keyof MainTabParamList> =
 
 export type MainStackScreenProps<Screen extends keyof MainStackParamList> =
   NativeStackScreenProps<MainStackParamList, Screen>;
+
+// 🔥 NOVO: Tipo para recorrência
+export type RecurrenceType = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 export interface User {
   id: string;
@@ -85,6 +88,7 @@ export interface Category {
   updatedAt?: string;
 }
 
+// 🔥 ATUALIZADO: Interface Transaction com campos de recorrência
 export interface Transaction {
   _id: string;
   description: string;
@@ -92,6 +96,8 @@ export interface Transaction {
   type: 'income' | 'expense';
   categoryId?: string;
   category?: Category;
+  budgetId?: string;         // 🔥 NOVO: Link para orçamento
+  budget?: Budget;           // Dados do orçamento
   userId: string;
   date: string;
   notes?: string;
@@ -99,29 +105,43 @@ export interface Transaction {
   paymentMethod: 'cash' | 'credit_card' | 'debit_card' | 'bank_transfer' | 'pix' | 'other';
   status: 'completed' | 'pending' | 'cancelled';
   isDeleted?: boolean;
+  // Campos de recorrência
+  isRecurring?: boolean;
+  recurringConfig?: {
+    frequency: RecurrenceType;
+    interval: number;
+    endDate?: string;
+    remainingOccurrences?: number;
+  };
   createdAt: string;
   updatedAt: string;
 }
 
 export interface Budget {
   _id: string;
-  name: string;
-  amount: number;
-  categoryId: string;
-  category?: Category;
-  userId: string;
+  name: string;              // "Orçamento Alimentação"
+  categoryId: string;        // ID da categoria escolhida
+  category?: Category;       // Dados da categoria
+  amount: number;            // R$ 1000
   period: 'weekly' | 'monthly' | 'quarterly' | 'yearly';
-  startDate: string;
-  endDate: string;
-  spent: number;
-  spentPercentage: number;
-  remaining: number;
-  isExceeded: boolean;
-  alertThreshold: number;
-  alertSent: boolean;
+  startDate: string;         // Início do período
+  endDate: string;           // Fim do período
+  
+  // 🔥 CAMPOS DE TRACKING
+  spent: number;             // Quanto já gastou
+  remaining: number;         // Quanto sobra
+  spentPercentage: number;   // % do orçamento usado
+  isExceeded: boolean;       // Se estourou
+  daysRemaining: number;     // Dias até fim período
+  dailyBudget: number;       // Quanto pode gastar por dia
+  projectedTotal: number;    // Projeção fim do período
+  
+  // 🚨 ALERTAS
+  alertThreshold: number;    // % para alerta (ex: 80%)
+  status: 'safe' | 'warning' | 'critical' | 'exceeded';
+  
+  userId: string;
   isActive: boolean;
-  notes?: string;
-  color: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -252,6 +272,7 @@ export interface RegisterForm {
   confirmPassword: string;
 }
 
+// 🔥 ATUALIZADO: Interface TransactionForm com campos de recorrência
 export interface TransactionForm {
   description: string;
   amount: string;
@@ -260,6 +281,33 @@ export interface TransactionForm {
   date: Date;
   notes?: string;
   paymentMethod: 'cash' | 'credit_card' | 'debit_card' | 'bank_transfer' | 'pix' | 'other';
+  // 🔥 NOVO: Campos de recorrência
+  isRecurring?: boolean;
+  recurringConfig?: {
+    frequency: RecurrenceType;
+    interval: number;
+    endDate?: Date;
+    remainingOccurrences?: number;
+  };
+}
+
+export interface BudgetStatus {
+  status: 'safe' | 'warning' | 'critical' | 'exceeded';
+  color: string;
+  icon: string;
+  message: string;
+}
+
+// 🔥 NOVO: Resumo de orçamentos para dashboard
+export interface BudgetSummary {
+  total: number;
+  active: number;
+  warning: number;
+  critical: number;
+  exceeded: number;
+  totalSpent: number;
+  totalBudget: number;
+  overallPercentage: number;
 }
 
 export interface BudgetForm {
@@ -267,11 +315,8 @@ export interface BudgetForm {
   amount: string;
   categoryId: string;
   period: 'weekly' | 'monthly' | 'quarterly' | 'yearly';
-  startDate: Date;
-  endDate: Date;
   alertThreshold: number;
   notes?: string;
-  color: string;
 }
 
 export interface GoalForm {
