@@ -1,5 +1,70 @@
-import { apiClient } from './client';
-import { ApiResponse, PaginatedResponse, Transaction, TransactionForm } from '../../types';
+// src/services/api/transactions.ts - Service de Transações Corrigido
+import { apiClient } from './config';
+
+// 🔥 Interfaces
+export interface Transaction {
+  _id: string;
+  description: string;
+  amount: number;
+  type: 'income' | 'expense';
+  categoryId?: string;
+  category?: {
+    _id: string;
+    name: string;
+    icon: string;
+    color: string;
+    type: string;
+  };
+  userId: string;
+  date: string;
+  notes?: string;
+  tags: string[];
+  paymentMethod: 'cash' | 'credit_card' | 'debit_card' | 'bank_transfer' | 'pix' | 'other';
+  status: 'completed' | 'pending' | 'cancelled';
+  isRecurring?: boolean;
+  recurringConfig?: {
+    frequency: 'daily' | 'weekly' | 'monthly' | 'yearly';
+    interval: number;
+    endDate?: string;
+    remainingOccurrences?: number;
+  };
+  parentTransactionId?: string;
+  isGeneratedFromRecurring?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TransactionsResponse {
+  items: Transaction[];
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    totalItems: number;
+    itemsPerPage: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+  };
+}
+
+export interface CreateTransactionData {
+  description: string;
+  amount: number;
+  type: 'income' | 'expense';
+  categoryId?: string;
+  date?: string;
+  notes?: string;
+  tags?: string[];
+  paymentMethod?: 'cash' | 'credit_card' | 'debit_card' | 'bank_transfer' | 'pix' | 'other';
+  isRecurring?: boolean;
+  recurringConfig?: {
+    frequency: 'daily' | 'weekly' | 'monthly' | 'yearly';
+    interval: number;
+    endDate?: string;
+    remainingOccurrences?: number;
+  };
+}
+
+export interface UpdateTransactionData extends Partial<CreateTransactionData> {}
 
 export interface TransactionFilters {
   page?: number;
@@ -9,165 +74,210 @@ export interface TransactionFilters {
   startDate?: string;
   endDate?: string;
   search?: string;
+  isRecurring?: boolean;
+  includeGenerated?: boolean;
 }
 
 export interface TransactionStats {
   summary: {
-    income: number;
-    expense: number;
+    income: { total: number; count: number; avgAmount: number };
+    expense: { total: number; count: number; avgAmount: number };
     balance: number;
-    incomeCount: number;
-    expenseCount: number;
-    totalTransactions: number;
   };
-  categoryStats: Array<{
+  timeline: Array<{
+    _id: any;
+    data: Array<{
+      type: 'income' | 'expense';
+      total: number;
+      count: number;
+      avgAmount: number;
+    }>;
+  }>;
+  categories: Array<{
     categoryId: string;
-    category: any;
+    type: 'income' | 'expense';
+    category: {
+      name: string;
+      icon: string;
+      color: string;
+    };
     total: number;
     count: number;
+    avgAmount: number;
+    percentage: number;
   }>;
-  recentTransactions: Transaction[];
+  period: {
+    groupBy: string;
+    startDate?: string;
+    endDate?: string;
+  };
 }
 
-export interface BulkTransactionData {
-  transactions: Omit<Transaction, '_id' | 'userId' | 'createdAt' | 'updatedAt'>[];
-}
-
-export const transactionService = {
-  async getTransactions(filters: TransactionFilters = {}): Promise<PaginatedResponse<Transaction>> {
+class TransactionService {
+  // 🔥 Buscar transações com filtros
+  async getTransactions(filters: TransactionFilters = {}): Promise<TransactionsResponse> {
     const params = new URLSearchParams();
     
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+    // Adicionar parâmetros de filtro
+    if (filters.page) params.append('page', filters.page.toString());
+    if (filters.limit) params.append('limit', filters.limit.toString());
+    if (filters.type) params.append('type', filters.type);
+    if (filters.categoryId) params.append('categoryId', filters.categoryId);
+    if (filters.startDate) params.append('startDate', filters.startDate);
+    if (filters.endDate) params.append('endDate', filters.endDate);
+    if (filters.search) params.append('search', filters.search);
+    if (filters.isRecurring !== undefined) params.append('isRecurring', filters.isRecurring.toString());
+    if (filters.includeGenerated !== undefined) params.append('includeGenerated', filters.includeGenerated.toString());
 
-    return apiClient.get(`/transactions?${params.toString()}`);
-  },
+    const queryString = params.toString();
+    const url = `/transactions${queryString ? `?${queryString}` : ''}`;
 
-  async getTransaction(id: string): Promise<ApiResponse<{ transaction: Transaction }>> {
+    console.log('📡 Fazendo requisição para transações...');
+    console.log('🔧 URL completa:', url);
+    console.log('📊 Filtros aplicados:', filters);
+
+    try {
+      const data = await apiClient.get<TransactionsResponse>(url);
+      
+      console.log('📊 Dados atualizados:', {
+        transactions: data.items?.length || 0,
+        pagination: data.pagination,
+        isLoading: false,
+        error: undefined
+      });
+
+      return data;
+    } catch (error: any) {
+      console.error('❌ Erro ao buscar transações:', error.message);
+      throw error;
+    }
+  }
+
+  // 🔥 Buscar transação por ID
+  async getTransaction(id: string): Promise<{ transaction: Transaction; childTransactions?: Transaction[] }> {
     return apiClient.get(`/transactions/${id}`);
-  },
+  }
 
-  async createTransaction(data: TransactionForm): Promise<ApiResponse<{ transaction: Transaction }>> {
-    const payload = {
-      ...data,
-      amount: parseFloat(data.amount),
-      date: data.date.toISOString(),
-    };
-    
-    return apiClient.post('/transactions', payload);
-  },
-
-  async updateTransaction(
-    id: string, 
-    data: Partial<TransactionForm>
-  ): Promise<ApiResponse<{ transaction: Transaction }>> {
-    const payload = {
-      ...data,
-      ...(data.amount && { amount: parseFloat(data.amount) }),
-      ...(data.date && { date: data.date.toISOString() }),
-    };
-    
-    return apiClient.put(`/transactions/${id}`, payload);
-  },
-
-  async deleteTransaction(id: string): Promise<ApiResponse<null>> {
-    return apiClient.delete(`/transactions/${id}`);
-  },
-
-  async restoreTransaction(id: string): Promise<ApiResponse<{ transaction: Transaction }>> {
-    return apiClient.post(`/transactions/${id}/restore`);
-  },
-
-  async getStats(startDate?: string, endDate?: string): Promise<ApiResponse<TransactionStats>> {
-    const params = new URLSearchParams();
-    
-    if (startDate) params.append('startDate', startDate);
-    if (endDate) params.append('endDate', endDate);
-    
-    return apiClient.get(`/transactions/stats?${params.toString()}`);
-  },
-
-  async createBulkTransactions(data: BulkTransactionData): Promise<ApiResponse<{
-    count: number;
-    transactions: Transaction[];
-  }>> {
-    return apiClient.post('/transactions/bulk', data);
-  },
-
-  async getTransactionsOfflineFirst(filters: TransactionFilters = {}): Promise<Transaction[]> {
-    const cacheKey = `transactions_${JSON.stringify(filters)}`;
-    
-    return apiClient.offlineFirst(
-      cacheKey,
-      async () => {
-        const response = await this.getTransactions(filters);
-        return response.data?.items || [];
-      }
-    );
-  },
-
-  async exportTransactions(format: 'json' | 'csv' = 'json', filters: TransactionFilters = {}): Promise<Blob> {
-    const params = new URLSearchParams();
-    
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
-    
-    params.append('format', format);
-    
-    return apiClient.get(`/transactions/export?${params.toString()}`, {
-      responseType: 'blob'
-    });
-  },
-
-  async duplicateTransaction(id: string): Promise<ApiResponse<{ transaction: Transaction }>> {
-    const { data } = await this.getTransaction(id);
-    
-    if (!data?.transaction) {
-      throw new Error('Transação não encontrada');
+  // 🔥 Criar nova transação
+  async createTransaction(data: CreateTransactionData): Promise<{ transaction: Transaction }> {
+    // Validar dados obrigatórios
+    if (!data.description?.trim()) {
+      throw new Error('Descrição é obrigatória');
+    }
+    if (!data.amount || data.amount <= 0) {
+      throw new Error('Valor deve ser maior que zero');
+    }
+    if (!data.type || !['income', 'expense'].includes(data.type)) {
+      throw new Error('Tipo deve ser receita ou gasto');
     }
 
-    const { _id, createdAt, updatedAt, ...transactionData } = data.transaction;
-    
-    return this.createTransaction({
-      description: `${transactionData.description} (cópia)`,
-      amount: transactionData.amount.toString(),
-      type: transactionData.type,
-      categoryId: transactionData.categoryId,
-      date: new Date(),
-      notes: transactionData.notes,
-      paymentMethod: transactionData.paymentMethod,
-    });
-  },
-
-  async getTransactionsByCategory(
-    categoryId: string, 
-    startDate?: string, 
-    endDate?: string
-  ): Promise<ApiResponse<Transaction[]>> {
-    const filters: TransactionFilters = { categoryId };
-    if (startDate) filters.startDate = startDate;
-    if (endDate) filters.endDate = endDate;
-    
-    const response = await this.getTransactions(filters);
-    return {
-      success: response.success,
-      data: response.data?.items || [],
-      message: response.message || '',
+    const payload = {
+      ...data,
+      date: data.date || new Date().toISOString(),
+      paymentMethod: data.paymentMethod || 'cash',
+      tags: data.tags || [],
     };
-  },
 
-  async getRecentTransactions(limit: number = 10): Promise<ApiResponse<Transaction[]>> {
-    const response = await this.getTransactions({ limit });
-    return {
-      success: response.success,
-      data: response.data?.items || [],
-      message: response.message || '',
+    console.log('💳 Criando transação:', payload);
+
+    return apiClient.post('/transactions', payload);
+  }
+
+  // 🔥 Atualizar transação
+  async updateTransaction(id: string, data: UpdateTransactionData): Promise<{ transaction: Transaction }> {
+    if (!id) {
+      throw new Error('ID da transação é obrigatório');
+    }
+
+    console.log('✏️ Atualizando transação:', { id, data });
+
+    return apiClient.put(`/transactions/${id}`, data);
+  }
+
+  // 🔥 Deletar transação
+  async deleteTransaction(id: string, deleteChildren = false): Promise<{ deletedCount: number }> {
+    if (!id) {
+      throw new Error('ID da transação é obrigatório');
+    }
+
+    const params = deleteChildren ? '?deleteChildren=true' : '';
+    
+    console.log('🗑️ Deletando transação:', { id, deleteChildren });
+
+    return apiClient.delete(`/transactions/${id}${params}`);
+  }
+
+  // 🔥 Obter estatísticas
+  async getStats(filters: {
+    startDate?: string;
+    endDate?: string;
+    groupBy?: 'day' | 'week' | 'month' | 'year';
+  } = {}): Promise<TransactionStats> {
+    const params = new URLSearchParams();
+    
+    if (filters.startDate) params.append('startDate', filters.startDate);
+    if (filters.endDate) params.append('endDate', filters.endDate);
+    if (filters.groupBy) params.append('groupBy', filters.groupBy);
+
+    const queryString = params.toString();
+    const url = `/transactions/stats${queryString ? `?${queryString}` : ''}`;
+
+    return apiClient.get(url);
+  }
+
+  // 🔥 Criar múltiplas transações (importação)
+  async createBulkTransactions(transactions: CreateTransactionData[]): Promise<{
+    count: number;
+    transactions: Transaction[];
+  }> {
+    if (!Array.isArray(transactions) || transactions.length === 0) {
+      throw new Error('Lista de transações é obrigatória');
+    }
+
+    if (transactions.length > 100) {
+      throw new Error('Máximo 100 transações por vez');
+    }
+
+    return apiClient.post('/transactions/bulk', { transactions });
+  }
+
+  // 🔥 Processar transações recorrentes
+  async processRecurringTransactions(): Promise<{
+    count: number;
+    transactions: Transaction[];
+  }> {
+    return apiClient.post('/transactions/process-recurring');
+  }
+
+  // 🔥 Obter estatísticas de recorrência
+  async getRecurringStats(): Promise<{
+    totalRecurring: number;
+    byFrequency: Array<{
+      _id: string;
+      count: number;
+      totalAmount: number;
+    }>;
+  }> {
+    return apiClient.get('/transactions/recurring/stats');
+  }
+
+  // 🔥 Duplicar transação
+  async duplicateTransaction(id: string, data?: Partial<CreateTransactionData>): Promise<{ transaction: Transaction }> {
+    const original = await this.getTransaction(id);
+    
+    const duplicateData: CreateTransactionData = {
+      description: data?.description || `${original.transaction.description} (cópia)`,
+      amount: data?.amount || original.transaction.amount,
+      type: data?.type || original.transaction.type,
+      categoryId: data?.categoryId || original.transaction.categoryId,
+      notes: data?.notes || original.transaction.notes,
+      tags: data?.tags || original.transaction.tags,
+      paymentMethod: data?.paymentMethod || original.transaction.paymentMethod,
+      date: data?.date || new Date().toISOString(),
     };
-  },
-};
+
+    return this.createTransaction(duplicateData);
+  }
+}
+
+export const transactionService = new TransactionService();

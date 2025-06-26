@@ -1,71 +1,225 @@
+// src/store/authStore.ts - Store de Autenticação Corrigido
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { User } from '../types';
+import { authService, User } from '../services/api/auth';
 
-interface AuthStore {
+interface AuthState {
+  // Estado
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  setAuth: (user: User, token: string) => Promise<void>;
-  updateUser: (user: Partial<User>) => Promise<void>;
+  error: string | null;
+
+  // Ações
+  login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   loadAuthData: () => Promise<void>;
-  setLoading: (loading: boolean) => void;
+  clearError: () => void;
+  updateUser: (userData: Partial<User>) => void;
+  checkAuthStatus: () => Promise<boolean>;
 }
 
-export const useAuthStore = create<AuthStore>((set, get) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
+  // Estado inicial
   user: null,
   token: null,
   isAuthenticated: false,
-  isLoading: true,
+  isLoading: false,
+  error: null,
 
-  setAuth: async (user, token) => {
+  // 🔥 Login
+  login: async (email: string, password: string) => {
+    set({ isLoading: true, error: null });
+
     try {
-      await AsyncStorage.setItem('user', JSON.stringify(user));
-      await AsyncStorage.setItem('token', token);
-      set({ user, token, isAuthenticated: true });
-    } catch (error) {
-      console.error('Erro ao salvar dados de auth:', error);
+      const response = await authService.login({ email, password });
+      
+      // Salvar dados no AsyncStorage
+      await AsyncStorage.multiSet([
+        ['auth_token', response.token],
+        ['user_data', JSON.stringify(response.user)],
+      ]);
+
+      set({
+        user: response.user,
+        token: response.token,
+        isAuthenticated: true,
+        isLoading: false,
+        error: null,
+      });
+
+      console.log('✅ Login realizado com sucesso');
+    } catch (error: any) {
+      console.error('❌ Erro no login:', error.message);
+      set({
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error: error.message,
+      });
+      throw error;
     }
   },
 
-  updateUser: async (userData) => {
+  // 🔥 Registro
+  register: async (name: string, email: string, password: string) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      await authService.register({ name, email, password });
+      
+      set({
+        isLoading: false,
+        error: null,
+      });
+
+      console.log('✅ Registro realizado com sucesso');
+    } catch (error: any) {
+      console.error('❌ Erro no registro:', error.message);
+      set({
+        isLoading: false,
+        error: error.message,
+      });
+      throw error;
+    }
+  },
+
+  // 🔥 Logout
+  logout: async () => {
+    set({ isLoading: true });
+
+    try {
+      await authService.logout();
+      
+      // Limpar AsyncStorage
+      await AsyncStorage.multiRemove(['auth_token', 'user_data']);
+
+      set({
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error: null,
+      });
+
+      console.log('✅ Logout realizado com sucesso');
+    } catch (error: any) {
+      console.error('❌ Erro no logout:', error.message);
+      // Mesmo com erro, limpar estado local
+      set({
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error: null,
+      });
+    }
+  },
+
+  // 🔥 Carregar dados salvos do AsyncStorage
+  loadAuthData: async () => {
+    set({ isLoading: true });
+
+    try {
+      const [token, userData] = await AsyncStorage.multiGet(['auth_token', 'user_data']);
+      
+      const authToken = token[1];
+      const userDataString = userData[1];
+
+      if (authToken && userDataString) {
+        const user = JSON.parse(userDataString);
+        
+        // Verificar se o token ainda é válido
+        const isValid = await authService.isAuthenticated();
+        
+        if (isValid) {
+          set({
+            user,
+            token: authToken,
+            isAuthenticated: true,
+            isLoading: false,
+            error: null,
+          });
+          
+          console.log('✅ Dados de autenticação carregados');
+        } else {
+          // Token inválido, limpar dados
+          await AsyncStorage.multiRemove(['auth_token', 'user_data']);
+          set({
+            user: null,
+            token: null,
+            isAuthenticated: false,
+            isLoading: false,
+            error: null,
+          });
+          
+          console.log('⚠️ Token inválido, dados limpos');
+        }
+      } else {
+        set({
+          user: null,
+          token: null,
+          isAuthenticated: false,
+          isLoading: false,
+          error: null,
+        });
+        
+        console.log('ℹ️ Nenhum dado de autenticação encontrado');
+      }
+    } catch (error: any) {
+      console.error('❌ Erro ao carregar dados de auth:', error.message);
+      set({
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error: error.message,
+      });
+    }
+  },
+
+  // 🔥 Limpar erro
+  clearError: () => {
+    set({ error: null });
+  },
+
+  // 🔥 Atualizar dados do usuário
+  updateUser: (userData: Partial<User>) => {
     const currentUser = get().user;
     if (currentUser) {
       const updatedUser = { ...currentUser, ...userData };
-      try {
-        await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
-        set({ user: updatedUser });
-      } catch (error) {
-        console.error('Erro ao atualizar usuário:', error);
-      }
-    }
-  },
-
-  logout: async () => {
-    try {
-      await AsyncStorage.multiRemove(['user', 'token']);
-      set({ user: null, token: null, isAuthenticated: false });
-    } catch (error) {
-      console.error('Erro ao fazer logout:', error);
-    }
-  },
-
-  loadAuthData: async () => {
-    try {
-      const [userString, token] = await AsyncStorage.multiGet(['user', 'token']);
       
-      if (userString[1] && token[1]) {
-        const user = JSON.parse(userString[1]);
-        set({ user, token: token[1], isAuthenticated: true });
-      }
-    } catch (error) {
-      console.error('Erro ao carregar dados de auth:', error);
-    } finally {
-      set({ isLoading: false });
+      set({ user: updatedUser });
+      
+      // Salvar no AsyncStorage
+      AsyncStorage.setItem('user_data', JSON.stringify(updatedUser))
+        .catch(error => console.error('❌ Erro ao salvar dados do usuário:', error));
     }
   },
 
-  setLoading: (loading) => set({ isLoading: loading }),
+  // 🔥 Verificar status de autenticação
+  checkAuthStatus: async (): Promise<boolean> => {
+    const { token } = get();
+    
+    if (!token) return false;
+    
+    try {
+      const isValid = await authService.isAuthenticated();
+      
+      if (!isValid) {
+        // Token inválido, fazer logout
+        await get().logout();
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('❌ Erro ao verificar status de auth:', error);
+      await get().logout();
+      return false;
+    }
+  },
 }));

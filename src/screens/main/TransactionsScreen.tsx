@@ -1,3 +1,4 @@
+// src/screens/main/TransactionsScreen.tsx - Versão Corrigida com tema compatível
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
@@ -7,9 +8,10 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -18,13 +20,14 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import { useThemeStore } from '../../store/themeStore';
+import { useAuthStore } from '../../store/authStore';
 import { getTheme } from '../../styles/theme';
-import { transactionService } from '../../services/api/transactions';
+import { mapThemeToCompat } from '../../styles/themeCompat';
+import { transactionService, Transaction } from '../../services/api/transactions';
 import { formatCurrency, formatRelativeTime } from '../../utils/formatters';
-import type { MainTabScreenProps, Transaction } from '../../types';
+import type { MainTabScreenProps } from '../../types';
 
 type Props = MainTabScreenProps<'Transactions'>;
-
 type FilterType = 'all' | 'income' | 'expense';
 
 export default function TransactionsScreen({ navigation }: Props) {
@@ -34,321 +37,392 @@ export default function TransactionsScreen({ navigation }: Props) {
   const [page, setPage] = useState(1);
   
   const { theme } = useThemeStore();
-  const themeConfig = getTheme(theme);
+  const { isAuthenticated, checkAuthStatus } = useAuthStore();
+  const originalTheme = getTheme(theme);
+  const themeConfig = mapThemeToCompat(originalTheme);
+  const queryClient = useQueryClient();
 
-  // 🔥 DEBUG: Log para rastrear problemas
+  // 🔥 Verificar autenticação ao montar componente
   useEffect(() => {
-    console.log('🔄 TransactionsScreen: Configurando query com parâmetros:', {
-      searchText,
-      filterType,
-      page
-    });
-  }, [searchText, filterType, page]);
+    const verifyAuth = async () => {
+      const isAuth = await checkAuthStatus();
+      if (!isAuth) {
+        Alert.alert(
+          'Sessão Expirada',
+          'Sua sessão expirou. Faça login novamente.',
+          [{ text: 'OK', onPress: () => navigation.navigate('Auth' as any) }]
+        );
+      }
+    };
 
+    verifyAuth();
+  }, []);
+
+  // 🔥 Query das transações com retry inteligente
   const {
     data: transactionsResponse,
     isLoading,
     error,
     refetch,
+    isFetching,
   } = useQuery({
-    queryKey: ['transactions', { search: searchText, type: filterType === 'all' ? undefined : filterType, page }],
+    queryKey: ['transactions', { 
+      search: searchText || undefined, 
+      type: filterType === 'all' ? undefined : filterType, 
+      page 
+    }],
     queryFn: async () => {
       console.log('📡 Fazendo requisição para transações...');
+      console.log('🔧 Parâmetros:', { searchText, filterType, page, isAuthenticated });
+      
       const result = await transactionService.getTransactions({
         search: searchText || undefined,
         type: filterType === 'all' ? undefined : filterType,
         page,
         limit: 20,
       });
-      console.log('📥 Resposta recebida:', result);
+
+      console.log('📊 Dados recebidos:', {
+        transactions: result.items?.length || 0,
+        pagination: result.pagination,
+        totalItems: result.pagination?.totalItems || 0
+      });
+
       return result;
     },
-    staleTime: 1000 * 60 * 2,
-    retry: 2,
+    enabled: isAuthenticated,
+    retry: (failureCount, error: any) => {
+      if (error?.message?.includes('Sessão expirada') || error?.message?.includes('401')) {
+        return false;
+      }
+      return failureCount < 2;
+    },
+    staleTime: 30000,
+    gcTime: 300000,
   });
 
-  const transactions = transactionsResponse?.data?.items || [];
-  const pagination = transactionsResponse?.data?.pagination;
-
-  // 🔥 DEBUG: Log dos dados recebidos
-  useEffect(() => {
-    console.log('📊 Dados atualizados:', {
-      isLoading,
-      error: error?.message,
-      transactions: transactions.length,
-      pagination
-    });
-  }, [isLoading, error, transactions, pagination]);
-
+  // 🔥 Refresh manual
   const onRefresh = useCallback(async () => {
-    console.log('🔄 Refreshing transactions...');
     setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
+    try {
+      await refetch();
+    } catch (error) {
+      console.error('❌ Erro ao atualizar:', error);
+    } finally {
+      setRefreshing(false);
+    }
   }, [refetch]);
 
-  const loadMore = () => {
-    if (pagination && page < pagination.totalPages) {
-      console.log(`📄 Carregando página ${page + 1} de ${pagination.totalPages}`);
-      setPage(prev => prev + 1);
-    }
+  // 🔥 Filtros
+  const handleFilterPress = (filter: FilterType) => {
+    setFilterType(filter);
+    setPage(1);
   };
 
-  const getPaymentMethodLabel = (method: string): string => {
-    const labels: Record<string, string> = {
-      cash: 'Dinheiro',
-      credit_card: 'Cartão de Crédito',
-      debit_card: 'Cartão de Débito',
-      bank_transfer: 'Transferência',
-      pix: 'PIX',
-      other: 'Outro',
-    };
-    
-    return labels[method] || method;
+  const handleSearch = (text: string) => {
+    setSearchText(text);
+    setPage(1);
   };
 
-  const renderFilterButton = (type: FilterType, label: string, icon: string) => (
-    <TouchableOpacity
-      style={[
-        styles.filterButton,
-        filterType === type && { backgroundColor: themeConfig.colors.primary + '15' },
-        { borderColor: filterType === type ? themeConfig.colors.primary : themeConfig.colors.border }
-      ]}
-      onPress={() => {
-        console.log(`🎯 Filtro alterado para: ${type}`);
-        setFilterType(type);
-        setPage(1);
-      }}
-    >
-      <Ionicons 
-        name={icon as any} 
-        size={16} 
-        color={filterType === type ? themeConfig.colors.primary : themeConfig.colors.textSecondary} 
-      />
-      <Text style={[
-        styles.filterButtonText,
-        { color: filterType === type ? themeConfig.colors.primary : themeConfig.colors.textSecondary }
-      ]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
+  // 🔥 Navegação para adicionar transação
+  const handleAddTransaction = () => {
+    navigation.navigate('AddTransaction', {});
+  };
 
-  const renderTransactionItem = ({ item, index }: { item: Transaction; index: number }) => (
-    <TouchableOpacity
-      style={[
-        styles.transactionItem,
-        index !== 0 && { borderTopWidth: 1, borderTopColor: themeConfig.colors.border }
-      ]}
-      onPress={() => {
-        console.log(`🔍 Navegando para detalhe da transação: ${item._id}`);
-        navigation.navigate('TransactionDetail', { transactionId: item._id });
-      }}
-    >
-      <View style={styles.transactionIcon}>
-        <View style={[
-          styles.iconContainer,
-          { backgroundColor: item.type === 'income' ? themeConfig.colors.success + '15' : themeConfig.colors.error + '15' }
-        ]}>
-          <Ionicons
-            name={item.type === 'income' ? 'trending-up' : 'trending-down'}
-            size={20}
-            color={item.type === 'income' ? themeConfig.colors.success : themeConfig.colors.error}
-          />
-        </View>
-      </View>
-      
-      <View style={styles.transactionContent}>
-        <Text style={[styles.transactionDescription, { color: themeConfig.colors.text }]}>
-          {item.description}
-        </Text>
-        <View style={styles.transactionMeta}>
-          <Text style={[styles.transactionCategory, { color: themeConfig.colors.textSecondary }]}>
-            {item.category?.name || 'Sem categoria'}
-          </Text>
-          <Text style={[styles.transactionSeparator, { color: themeConfig.colors.textLight }]}>
-            •
-          </Text>
-          <Text style={[styles.transactionDate, { color: themeConfig.colors.textLight }]}>
-            {formatRelativeTime(item.date)}
-          </Text>
-        </View>
-        {item.paymentMethod && item.paymentMethod !== 'cash' && (
-          <Text style={[styles.transactionPayment, { color: themeConfig.colors.textLight }]}>
-            {getPaymentMethodLabel(item.paymentMethod)}
-          </Text>
-        )}
-      </View>
-      
-      <View style={styles.transactionAmount}>
-        <Text style={[
-          styles.transactionValue,
-          {
-            color: item.type === 'income' 
-              ? themeConfig.colors.success 
-              : themeConfig.colors.error
-          }
-        ]}>
-          {item.type === 'income' ? '+' : '-'}{formatCurrency(item.amount)}
-        </Text>
-        <Text style={[styles.transactionTime, { color: themeConfig.colors.textLight }]}>
-          {format(new Date(item.date), 'HH:mm')}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
+  // 🔥 Navegação para editar transação
+  const handleEditTransaction = (transaction: Transaction) => {
+    navigation.navigate('EditTransaction', { transactionId: transaction._id });
+  };
 
-  const renderHeader = () => (
-    <View style={styles.header}>
-      {/* Busca */}
-      <Input
-        placeholder="Buscar transações..."
-        value={searchText}
-        onChangeText={(text) => {
-          console.log(`🔍 Busca alterada: "${text}"`);
-          setSearchText(text);
-          setPage(1);
-        }}
-        variant="filled"
-        leftIcon={
-          <Ionicons name="search" size={20} color={themeConfig.colors.textSecondary} />
-        }
-        style={styles.searchInput}
-      />
+  // 🔥 Ver detalhes da transação
+  const handleViewTransaction = (transaction: Transaction) => {
+    navigation.navigate('TransactionDetail', { transactionId: transaction._id });
+  };
 
-      {/* Filtros */}
-      <View style={styles.filtersContainer}>
-        {renderFilterButton('all', 'Todas', 'list-outline')}
-        {renderFilterButton('income', 'Receitas', 'trending-up')}
-        {renderFilterButton('expense', 'Gastos', 'trending-down')}
-      </View>
-
-      {/* Resumo */}
-      {pagination && (
-        <Text style={[styles.summary, { color: themeConfig.colors.textSecondary }]}>
-          {pagination.totalItems} transações encontradas
-        </Text>
-      )}
-
-      {/* 🔥 DEBUG: Informações de debug */}
-      {__DEV__ && (
-        <View style={[styles.debugContainer, { backgroundColor: themeConfig.colors.card }]}>
-          <Text style={[styles.debugText, { color: themeConfig.colors.textSecondary }]}>
-            🐛 DEBUG: Loading: {isLoading ? 'SIM' : 'NÃO'} | 
-            Transações: {transactions.length} | 
-            Erro: {error ? 'SIM' : 'NÃO'}
-          </Text>
-          {error && (
-            <Text style={[styles.debugText, { color: themeConfig.colors.error }]}>
-              ❌ Erro: {error.message}
-            </Text>
-          )}
-        </View>
-      )}
-    </View>
-  );
-
-  const renderFooter = () => {
-    if (!isLoading || page === 1) return null;
-    
-    return (
-      <View style={styles.footer}>
-        <ActivityIndicator color={themeConfig.colors.primary} />
-      </View>
+  // 🔥 Deletar transação
+  const handleDeleteTransaction = (transaction: Transaction) => {
+    Alert.alert(
+      'Confirmar Exclusão',
+      `Deseja excluir a transação "${transaction.description}"?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await transactionService.deleteTransaction(transaction._id);
+              queryClient.invalidateQueries({ queryKey: ['transactions'] });
+              Alert.alert('Sucesso', 'Transação excluída com sucesso!');
+            } catch (error: any) {
+              Alert.alert('Erro', error.message || 'Erro ao excluir transação');
+            }
+          },
+        },
+      ]
     );
   };
 
-  const renderEmpty = () => (
-    <View style={styles.emptyState}>
-      <Ionicons name="receipt-outline" size={64} color={themeConfig.colors.textLight} />
-      <Text style={[styles.emptyStateTitle, { color: themeConfig.colors.textSecondary }]}>
-        {searchText ? 'Nenhuma transação encontrada' : 'Nenhuma transação ainda'}
-      </Text>
-      <Text style={[styles.emptyStateSubtitle, { color: themeConfig.colors.textLight }]}>
-        {searchText 
-          ? 'Tente ajustar os filtros de busca'
-          : 'Adicione sua primeira transação para começar'
-        }
-      </Text>
-      {!searchText && (
-        <Button
-          title="Adicionar Transação"
-          onPress={() => navigation.navigate('AddTransaction', {})}
-          style={styles.emptyStateButton}
-        />
-      )}
-    </View>
-  );
-
-  // 🔥 DEBUG: Mostrar estado de erro
-  if (error) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: themeConfig.colors.background }]}>
-        <View style={styles.topBar}>
-          <Text style={[styles.title, { color: themeConfig.colors.text }]}>
-            Transações
-          </Text>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('AddTransaction', {})}
-            style={[styles.addButton, { backgroundColor: themeConfig.colors.primary }]}
-          >
-            <Ionicons name="add" size={24} color="#ffffff" />
-          </TouchableOpacity>
+  // 🔥 Componente do item da transação
+  const renderTransactionItem = ({ item }: { item: Transaction }) => (
+    <TouchableOpacity
+      style={[styles.transactionItem, { backgroundColor: themeConfig.surface }]}
+      onPress={() => handleViewTransaction(item)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.transactionHeader}>
+        <View style={styles.categoryInfo}>
+          {item.category ? (
+            <View
+              style={[
+                styles.categoryIcon,
+                { backgroundColor: item.category.color + '20' }
+              ]}
+            >
+              <Ionicons
+                name={item.category.icon as any}
+                size={20}
+                color={item.category.color}
+              />
+            </View>
+          ) : (
+            <View
+              style={[
+                styles.categoryIcon,
+                { backgroundColor: themeConfig.muted + '20' }
+              ]}
+            >
+              <Ionicons
+                name="help-circle"
+                size={20}
+                color={themeConfig.muted}
+              />
+            </View>
+          )}
+          <View style={styles.transactionInfo}>
+            <Text
+              style={[styles.transactionDescription, { color: themeConfig.foreground }]}
+              numberOfLines={1}
+            >
+              {item.description}
+            </Text>
+            <Text style={[styles.transactionCategory, { color: themeConfig.muted }]}>
+              {item.category?.name || 'Sem categoria'} • {format(new Date(item.date), 'dd/MM/yyyy', { locale: ptBR })}
+            </Text>
+          </View>
         </View>
         
-        <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle" size={48} color={themeConfig.colors.error} />
-          <Text style={[styles.errorTitle, { color: themeConfig.colors.text }]}>
-            Erro ao carregar transações
+        <View style={styles.transactionActions}>
+          <Text
+            style={[
+              styles.transactionAmount,
+              {
+                color: item.type === 'income' 
+                  ? themeConfig.success 
+                  : themeConfig.destructive
+              }
+            ]}
+          >
+            {item.type === 'income' ? '+' : '-'} {formatCurrency(item.amount)}
           </Text>
-          <Text style={[styles.errorMessage, { color: themeConfig.colors.textSecondary }]}>
-            {error.message}
-          </Text>
-          <Button
-            title="Tentar Novamente"
-            onPress={() => refetch()}
-            style={styles.retryButton}
-          />
+          
+          <View style={styles.actionButtons}>
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: themeConfig.primary + '20' }]}
+              onPress={() => handleEditTransaction(item)}
+            >
+              <Ionicons name="pencil" size={16} color={themeConfig.primary} />
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: themeConfig.destructive + '20' }]}
+              onPress={() => handleDeleteTransaction(item)}
+            >
+              <Ionicons name="trash" size={16} color={themeConfig.destructive} />
+            </TouchableOpacity>
+          </View>
         </View>
-      </SafeAreaView>
-    );
-  }
+      </View>
+      
+      {item.notes && (
+        <Text
+          style={[styles.transactionNotes, { color: themeConfig.muted }]}
+          numberOfLines={2}
+        >
+          {item.notes}
+        </Text>
+      )}
+      
+      {item.isRecurring && (
+        <View style={styles.recurringBadge}>
+          <Ionicons name="repeat" size={12} color={themeConfig.primary} />
+          <Text style={[styles.recurringText, { color: themeConfig.primary }]}>
+            Recorrente
+          </Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+
+  // 🔥 Componente de filtros
+  const renderFilters = () => (
+    <View style={styles.filtersContainer}>
+      <View style={styles.filterButtons}>
+        {[
+          { key: 'all', label: 'Todas', icon: 'list' },
+          { key: 'income', label: 'Receitas', icon: 'arrow-up-circle' },
+          { key: 'expense', label: 'Gastos', icon: 'arrow-down-circle' },
+        ].map((filter) => (
+          <TouchableOpacity
+            key={filter.key}
+            style={[
+              styles.filterButton,
+              {
+                backgroundColor: filterType === filter.key 
+                  ? themeConfig.primary 
+                  : themeConfig.muted + '20'
+              }
+            ]}
+            onPress={() => handleFilterPress(filter.key as FilterType)}
+          >
+            <Ionicons
+              name={filter.icon as any}
+              size={16}
+              color={filterType === filter.key ? 'white' : themeConfig.muted}
+            />
+            <Text
+              style={[
+                styles.filterButtonText,
+                {
+                  color: filterType === filter.key ? 'white' : themeConfig.muted
+                }
+              ]}
+            >
+              {filter.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+
+  // 🔥 Componente de estado vazio
+  const renderEmptyState = () => (
+    <View style={styles.emptyState}>
+      <Ionicons
+        name="wallet-outline"
+        size={64}
+        color={themeConfig.muted}
+      />
+      <Text style={[styles.emptyStateTitle, { color: themeConfig.foreground }]}>
+        Nenhuma transação encontrada
+      </Text>
+      <Text style={[styles.emptyStateDescription, { color: themeConfig.muted }]}>
+        {searchText 
+          ? 'Tente ajustar os filtros ou termos de busca'
+          : 'Comece adicionando sua primeira transação'
+        }
+      </Text>
+      <Button
+        title="Adicionar Transação"
+        onPress={handleAddTransaction}
+        style={styles.emptyStateButton}
+      />
+    </View>
+  );
+
+  // 🔥 Componente de erro
+  const renderError = () => (
+    <View style={styles.errorState}>
+      <Ionicons
+        name="warning-outline"
+        size={64}
+        color={themeConfig.destructive}
+      />
+      <Text style={[styles.errorTitle, { color: themeConfig.foreground }]}>
+        Erro ao carregar transações
+      </Text>
+      <Text style={[styles.errorDescription, { color: themeConfig.muted }]}>
+        {error?.message || 'Ocorreu um erro inesperado'}
+      </Text>
+      <Button
+        title="Tentar Novamente"
+        onPress={() => refetch()}
+        style={styles.retryButton}
+      />
+    </View>
+  );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: themeConfig.colors.background }]}>
-      <View style={[styles.topBar, { backgroundColor: themeConfig.colors.card, borderBottomColor: themeConfig.colors.border }]}>
-        <Text style={[styles.title, { color: themeConfig.colors.text }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: themeConfig.background }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={[styles.title, { color: themeConfig.foreground }]}>
           Transações
         </Text>
         <TouchableOpacity
-          onPress={() => navigation.navigate('AddTransaction', {})}
-          style={[styles.addButton, { backgroundColor: themeConfig.colors.primary }]}
+          style={[styles.addButton, { backgroundColor: themeConfig.primary }]}
+          onPress={handleAddTransaction}
         >
-          <Ionicons name="add" size={24} color="#ffffff" />
+          <Ionicons name="add" size={24} color="white" />
         </TouchableOpacity>
       </View>
 
-      <Card variant="elevated" style={styles.contentCard}>
-        <FlatList
-          data={transactions}
-          keyExtractor={(item) => item._id}
-          renderItem={renderTransactionItem}
-          ListHeaderComponent={renderHeader}
-          ListEmptyComponent={!isLoading ? renderEmpty : null}
-          ListFooterComponent={renderFooter}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.3}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={transactions.length === 0 ? styles.emptyListContainer : undefined}
+      {/* Barra de busca */}
+      <View style={styles.searchContainer}>
+        <Input
+          placeholder="Buscar transações..."
+          value={searchText}
+          onChangeText={handleSearch}
+          leftIcon="search"
+          style={styles.searchInput}
         />
+      </View>
+
+      {/* Filtros */}
+      {renderFilters()}
+
+      {/* Lista de transações */}
+      <Card style={styles.listContainer}>
+        {isLoading && !refreshing ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={themeConfig.primary} />
+            <Text style={[styles.loadingText, { color: themeConfig.muted }]}>
+              Carregando transações...
+            </Text>
+          </View>
+        ) : error ? (
+          renderError()
+        ) : (
+          <FlatList
+            data={transactionsResponse?.items || []}
+            renderItem={renderTransactionItem}
+            keyExtractor={(item) => item._id}
+            contentContainerStyle={[
+              styles.listContent,
+              { flexGrow: 1 }
+            ]}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={[themeConfig.primary]}
+                tintColor={themeConfig.primary}
+              />
+            }
+            ListEmptyComponent={!isLoading ? renderEmptyState : null}
+            showsVerticalScrollIndicator={false}
+            ItemSeparatorComponent={() => (
+              <View style={[styles.separator, { backgroundColor: themeConfig.border }]} />
+            )}
+          />
+        )}
       </Card>
 
-      {isLoading && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={themeConfig.colors.primary} />
+      {/* Indicador de loading durante fetch */}
+      {isFetching && !isLoading && !refreshing && (
+        <View style={styles.fetchingIndicator}>
+          <ActivityIndicator size="small" color={themeConfig.primary} />
         </View>
       )}
     </SafeAreaView>
@@ -358,85 +432,83 @@ export default function TransactionsScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    padding: 16,
   },
-  topBar: {
+  header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    alignItems: 'center',
+    marginBottom: 16,
   },
   title: {
-    fontSize: 20,
+    fontSize: 28,
     fontWeight: 'bold',
   },
   addButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  contentCard: {
-    flex: 1,
-    margin: 16,
-    marginTop: 8,
-  },
-  header: {
-    paddingBottom: 16,
+  searchContainer: {
+    marginBottom: 16,
   },
   searchInput: {
-    marginBottom: 16,
+    marginBottom: 0,
   },
   filtersContainer: {
-    flexDirection: 'row',
-    gap: 8,
     marginBottom: 16,
   },
+  filterButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   filterButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
+    borderRadius: 8,
     gap: 6,
   },
   filterButtonText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '500',
   },
-  summary: {
-    fontSize: 12,
-    textAlign: 'center',
+  listContainer: {
+    flex: 1,
+    padding: 0,
   },
-  debugContainer: {
-    marginTop: 8,
-    padding: 8,
-    borderRadius: 8,
-  },
-  debugText: {
-    fontSize: 10,
-    textAlign: 'center',
+  listContent: {
+    padding: 16,
   },
   transactionItem: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  transactionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  categoryInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 4,
+    flex: 1,
   },
-  transactionIcon: {
-    marginRight: 12,
-  },
-  iconContainer: {
+  categoryIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 12,
   },
-  transactionContent: {
+  transactionInfo: {
     flex: 1,
   },
   transactionDescription: {
@@ -444,92 +516,105 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 4,
   },
-  transactionMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
   transactionCategory: {
-    fontSize: 12,
+    fontSize: 14,
   },
-  transactionSeparator: {
-    marginHorizontal: 6,
-    fontSize: 12,
-  },
-  transactionDate: {
-    fontSize: 12,
-  },
-  transactionPayment: {
-    fontSize: 11,
-  },
-  transactionAmount: {
+  transactionActions: {
     alignItems: 'flex-end',
   },
-  transactionValue: {
+  transactionAmount: {
     fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 2,
+    fontWeight: 'bold',
+    marginBottom: 8,
   },
-  transactionTime: {
-    fontSize: 11,
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 8,
   },
-  footer: {
-    paddingVertical: 16,
+  actionButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
     alignItems: 'center',
+  },
+  transactionNotes: {
+    fontSize: 14,
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+  recurringBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 4,
+  },
+  recurringText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  separator: {
+    height: 1,
+    marginVertical: 4,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
   },
   emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 48,
+    paddingVertical: 40,
   },
   emptyStateTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: 'bold',
     marginTop: 16,
     marginBottom: 8,
-    textAlign: 'center',
   },
-  emptyStateSubtitle: {
-    fontSize: 14,
+  emptyStateDescription: {
+    fontSize: 16,
     textAlign: 'center',
     marginBottom: 24,
+    paddingHorizontal: 32,
   },
   emptyStateButton: {
     minWidth: 200,
   },
-  emptyListContainer: {
-    flexGrow: 1,
-  },
-  loadingContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.1)',
-  },
-  errorContainer: {
+  errorState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    paddingVertical: 40,
   },
   errorTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: 'bold',
     marginTop: 16,
     marginBottom: 8,
-    textAlign: 'center',
   },
-  errorMessage: {
-    fontSize: 14,
+  errorDescription: {
+    fontSize: 16,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
+    paddingHorizontal: 32,
   },
   retryButton: {
-    minWidth: 120,
+    minWidth: 200,
+  },
+  fetchingIndicator: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 12,
+    padding: 8,
   },
 });

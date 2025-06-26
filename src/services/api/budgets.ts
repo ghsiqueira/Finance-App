@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import { ApiResponse, Budget, BudgetForm } from '../../types';
+import { ApiResponse, AvailableBudget, Budget, BudgetForm } from '../../types';
 
 export interface BudgetFilters {
   status?: 'active' | 'expired' | 'future';
@@ -354,5 +354,36 @@ export const budgetService = {
     });
     
     return response.data;
+  },
+
+  // 🔥 NOVO: Método para buscar orçamentos ativos para transações
+  async getActiveBudgetsForTransaction(type: 'income' | 'expense' = 'expense'): Promise<ApiResponse<{ budgets: AvailableBudget[] }>> {
+    const params = new URLSearchParams();
+    params.append('status', 'active');
+    params.append('type', type);
+    params.append('includeSpent', 'true');
+    
+    return apiClient.get(`/budgets/available-for-transaction?${params.toString()}`);
+  },
+
+  // 🔥 NOVO: Método para buscar orçamentos por categoria
+  async getBudgetsByCategory(categoryId: string, includeInactive: boolean = false): Promise<ApiResponse<{ budgets: AvailableBudget[] }>> {
+    const params = new URLSearchParams();
+    params.append('categoryId', categoryId);
+    if (includeInactive) params.append('includeInactive', 'true');
+    
+    return apiClient.get(`/budgets/by-category?${params.toString()}`);
+  },
+
+  // 🔥 NOVO: Método para simular impacto da transação no orçamento
+  async simulateTransactionImpact(budgetId: string, amount: number): Promise<ApiResponse<{
+    currentSpent: number;
+    newSpent: number;
+    remaining: number;
+    newPercentage: number;
+    wouldExceed: boolean;
+    newStatus: 'safe' | 'warning' | 'critical' | 'exceeded';
+  }>> {
+    return apiClient.post(`/budgets/${budgetId}/simulate-impact`, { amount });
   },
 };
