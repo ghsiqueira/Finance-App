@@ -1,7 +1,8 @@
 // src/services/api/auth.ts - Service de Autenticação Corrigido
 import { apiClient } from './config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// 🔥 Interfaces
+// Interfaces atualizadas
 export interface User {
   id: string;
   name: string;
@@ -30,162 +31,230 @@ export interface RegisterData {
   name: string;
   email: string;
   password: string;
+  confirmPassword?: string; // Opcional, usado apenas no frontend
 }
 
 export interface LoginResponse {
+  success: boolean;
+  message: string;
   token: string;
   user: User;
 }
 
-export interface ForgotPasswordData {
-  email: string;
+export interface RegisterResponse {
+  success: boolean;
+  message: string;
+  data: {
+    user: User;
+  };
 }
 
-export interface ResetPasswordData {
-  token: string;
-  password: string;
+export interface ApiResponse<T = any> {
+  success: boolean;
+  message: string;
+  data?: T;
+  errors?: any[];
 }
 
 class AuthService {
-  // 🔥 Login
-  async login(credentials: LoginCredentials): Promise<LoginResponse> {
-    if (!credentials.email?.trim()) {
-      throw new Error('Email é obrigatório');
-    }
-    if (!credentials.password?.trim()) {
-      throw new Error('Senha é obrigatória');
-    }
-
-    console.log('🔐 Fazendo login para:', credentials.email);
-
+  // Teste de conexão
+  async testConnection(): Promise<ApiResponse> {
     try {
-      const response = await apiClient.post<LoginResponse>('/auth/login', credentials);
+      console.log('🔍 Testando conexão com servidor...');
+      const response = await apiClient.get<{status: string; version: string}>('/auth/test-connection');
       
-      // Salvar token automaticamente
-      if (response.token) {
-        await apiClient.setAuthToken(response.token);
-        console.log('✅ Token salvo com sucesso');
+      return {
+        success: true,
+        message: 'Conexão estabelecida com sucesso',
+        data: response
+      };
+    } catch (error: any) {
+      console.error('❌ Erro na conexão:', error);
+      return {
+        success: false,
+        message: error.message || 'Erro de conexão',
+        data: error
+      };
+    }
+  }
+
+  // Login
+  async login(credentials: LoginCredentials): Promise<LoginResponse> {
+    try {
+      // Validações básicas
+      if (!credentials.email?.trim()) {
+        throw new Error('Email é obrigatório');
+      }
+      if (!credentials.password?.trim()) {
+        throw new Error('Senha é obrigatória');
       }
 
-      return response;
+      console.log('🔐 Fazendo login para:', credentials.email);
+
+      const response = await apiClient.post<{token: string; user: User}>('/auth/login', credentials);
+      
+      // O apiClient já valida o success na resposta, então se chegou aqui é porque foi bem-sucedido
+      if (!response.token || !response.user) {
+        throw new Error('Resposta inválida do servidor');
+      }
+
+      // Salvar token automaticamente
+      await apiClient.setAuthToken(response.token);
+      console.log('✅ Token salvo com sucesso');
+
+      return {
+        success: true,
+        message: 'Login realizado com sucesso',
+        token: response.token,
+        user: response.user
+      };
+
     } catch (error: any) {
       console.error('❌ Erro no login:', error.message);
-      throw error;
+      
+      // Limpar token em caso de erro
+      await apiClient.clearAuthToken();
+      
+      throw new Error(error.message || 'Erro interno no login');
     }
   }
 
-  // 🔥 Registro
-  async register(data: RegisterData): Promise<{ user: Partial<User> }> {
-    if (!data.name?.trim()) {
-      throw new Error('Nome é obrigatório');
-    }
-    if (!data.email?.trim()) {
-      throw new Error('Email é obrigatório');
-    }
-    if (!data.password || data.password.length < 6) {
-      throw new Error('Senha deve ter pelo menos 6 caracteres');
-    }
+  // Registro
+  async register(data: RegisterData): Promise<RegisterResponse> {
+    try {
+      // Validações básicas
+      if (!data.name?.trim()) {
+        throw new Error('Nome é obrigatório');
+      }
+      if (!data.email?.trim()) {
+        throw new Error('Email é obrigatório');
+      }
+      if (!data.password?.trim()) {
+        throw new Error('Senha é obrigatória');
+      }
+      if (data.password.length < 6) {
+        throw new Error('Senha deve ter pelo menos 6 caracteres');
+      }
 
-    console.log('📝 Registrando usuário:', data.email);
+      // Validar confirmação de senha (apenas no frontend)
+      if (data.confirmPassword && data.password !== data.confirmPassword) {
+        throw new Error('As senhas não conferem');
+      }
 
-    return apiClient.post('/auth/register', data);
+      console.log('📝 Registrando usuário:', data.email);
+
+      // Remover confirmPassword antes de enviar para o backend
+      const { confirmPassword, ...registerPayload } = data;
+
+      const response = await apiClient.post<{user: User}>('/auth/register', registerPayload);
+      
+      // O apiClient já valida o success na resposta, então se chegou aqui é porque foi bem-sucedido
+      console.log('✅ Registro bem-sucedido');
+
+      return {
+        success: true,
+        message: 'Usuário criado com sucesso! Verifique seu email para ativar a conta.',
+        data: response
+      };
+
+    } catch (error: any) {
+      console.error('❌ Erro no registro:', error.message);
+      throw new Error(error.message || 'Erro interno no registro');
+    }
   }
 
-  // 🔥 Verificar email
-  async verifyEmail(token: string): Promise<{ message: string }> {
-    if (!token?.trim()) {
-      throw new Error('Token de verificação é obrigatório');
-    }
+  // Esqueci a senha
+  async forgotPassword(email: string): Promise<ApiResponse> {
+    try {
+      if (!email?.trim()) {
+        throw new Error('Email é obrigatório');
+      }
 
-    return apiClient.post('/auth/verify-email', { token });
+      const response = await apiClient.post<{message: string}>('/auth/forgot-password', { email });
+      
+      return {
+        success: true,
+        message: response.message || 'Se o email existir, você receberá instruções para redefinir sua senha.'
+      };
+
+    } catch (error: any) {
+      console.error('❌ Erro no forgot password:', error.message);
+      throw new Error(error.message || 'Erro interno');
+    }
   }
 
-  // 🔥 Esqueci minha senha
-  async forgotPassword(data: ForgotPasswordData): Promise<{ message: string }> {
-    if (!data.email?.trim()) {
-      throw new Error('Email é obrigatório');
-    }
+  // Redefinir senha
+  async resetPassword(token: string, password: string): Promise<ApiResponse> {
+    try {
+      if (!token?.trim()) {
+        throw new Error('Token é obrigatório');
+      }
+      if (!password?.trim()) {
+        throw new Error('Senha é obrigatória');
+      }
+      if (password.length < 6) {
+        throw new Error('Senha deve ter pelo menos 6 caracteres');
+      }
 
-    return apiClient.post('/auth/forgot-password', data);
+      const response = await apiClient.post<{message: string}>('/auth/reset-password', {
+        token,
+        password
+      });
+      
+      return {
+        success: true,
+        message: response.message || 'Senha redefinida com sucesso!'
+      };
+
+    } catch (error: any) {
+      console.error('❌ Erro no reset password:', error.message);
+      throw new Error(error.message || 'Erro interno');
+    }
   }
 
-  // 🔥 Redefinir senha
-  async resetPassword(data: ResetPasswordData): Promise<{ message: string }> {
-    if (!data.token?.trim()) {
-      throw new Error('Token de redefinição é obrigatório');
-    }
-    if (!data.password || data.password.length < 6) {
-      throw new Error('Senha deve ter pelo menos 6 caracteres');
-    }
-
-    return apiClient.post('/auth/reset-password', data);
-  }
-
-  // 🔥 Obter dados do usuário atual
-  async getCurrentUser(): Promise<{ user: User }> {
-    return apiClient.get('/auth/me');
-  }
-
-  // 🔥 Logout
+  // Logout
   async logout(): Promise<void> {
     try {
-      // Chamar endpoint de logout (opcional)
+      // Tentar fazer logout no servidor
       await apiClient.post('/auth/logout');
     } catch (error) {
-      // Ignore erros do logout no backend
-      console.warn('⚠️ Erro no logout do backend (ignorado):', error);
+      console.log('⚠️ Erro no logout do servidor (não crítico)');
     } finally {
-      // Sempre limpar dados locais
+      // Sempre limpar token local
       await apiClient.clearAuthToken();
-      console.log('🚪 Logout realizado localmente');
+      console.log('✅ Logout local realizado');
     }
   }
 
-  // 🔥 Verificar se está autenticado
+  // Verificar perfil
+  async getProfile(): Promise<User> {
+    try {
+      const response = await apiClient.get<{user: User}>('/auth/me');
+      
+      return response.user;
+
+    } catch (error: any) {
+      console.error('❌ Erro ao buscar perfil:', error.message);
+      throw new Error(error.message || 'Erro interno');
+    }
+  }
+
+  // Verificar se está autenticado
   async isAuthenticated(): Promise<boolean> {
     try {
-      await this.getCurrentUser();
+      // Verificar se tem token no AsyncStorage
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) return false;
+
+      // Tentar buscar perfil para validar token
+      await this.getProfile();
       return true;
+
     } catch (error) {
+      console.log('⚠️ Token inválido, limpando...');
       await apiClient.clearAuthToken();
       return false;
     }
-  }
-
-  // 🔥 Testar conexão com o backend
-  async testConnection(): Promise<{ success: boolean; message: string }> {
-    return apiClient.testConnection();
-  }
-
-  // 🔥 Refresh do token (se necessário no futuro)
-  async refreshToken(): Promise<{ token: string }> {
-    const response = await apiClient.post<{ token: string }>('/auth/refresh');
-    
-    if (response.token) {
-      await apiClient.setAuthToken(response.token);
-    }
-    
-    return response;
-  }
-
-  // 🔥 Reenviar email de verificação
-  async resendVerificationEmail(): Promise<{ message: string }> {
-    return apiClient.post('/auth/resend-verification');
-  }
-
-  // 🔥 Alterar senha (quando já logado)
-  async changePassword(data: {
-    currentPassword: string;
-    newPassword: string;
-  }): Promise<{ message: string }> {
-    if (!data.currentPassword?.trim()) {
-      throw new Error('Senha atual é obrigatória');
-    }
-    if (!data.newPassword || data.newPassword.length < 6) {
-      throw new Error('Nova senha deve ter pelo menos 6 caracteres');
-    }
-
-    return apiClient.put('/auth/change-password', data);
   }
 }
 

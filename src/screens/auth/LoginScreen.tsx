@@ -20,8 +20,6 @@ import Card from '../../components/common/Card';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import { getTheme } from '../../styles/theme';
-import { authService } from '../../services/api/auth';
-import type { AuthStackScreenProps, LoginForm } from '../../types';
 
 const schema = yup.object({
   email: yup
@@ -34,11 +32,18 @@ const schema = yup.object({
     .required('Senha é obrigatória'),
 });
 
-type Props = AuthStackScreenProps<'Login'>;
+interface LoginForm {
+  email: string;
+  password: string;
+}
+
+type Props = {
+  navigation: any;
+};
 
 export default function LoginScreen({ navigation }: Props) {
   const [isLoading, setIsLoading] = useState(false);
-  const { setAuth } = useAuthStore();
+  const { login } = useAuthStore(); // Usar o método login do store
   const { theme } = useThemeStore();
   const themeConfig = getTheme(theme);
 
@@ -58,18 +63,20 @@ export default function LoginScreen({ navigation }: Props) {
     setIsLoading(true);
     
     try {
-      const response = await authService.login(data);
+      console.log('🔑 Tentando fazer login...');
       
-      if (response.success && response.data) {
-        await setAuth(response.data.user, response.data.token);
-      } else {
-        Alert.alert('Erro', response.message || 'Erro ao fazer login');
-      }
+      // Usar o método login do store diretamente
+      await login(data.email, data.password);
+      
+      console.log('✅ Login realizado com sucesso - navegação automática');
+      // A navegação vai acontecer automaticamente quando isAuthenticated mudar
+      
     } catch (error: any) {
-      console.error('Erro no login:', error);
+      console.error('❌ Erro no login:', error);
       Alert.alert(
         'Erro de Login',
-        error.response?.data?.message || 'Erro interno. Tente novamente.'
+        error.message || 'Erro interno. Tente novamente.',
+        [{ text: 'OK' }]
       );
     } finally {
       setIsLoading(false);
@@ -84,25 +91,25 @@ export default function LoginScreen({ navigation }: Props) {
       >
         <ScrollView
           contentContainerStyle={styles.scrollContainer}
-          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
           {/* Header */}
           <View style={styles.header}>
             <View style={[styles.logoContainer, { backgroundColor: themeConfig.colors.primary }]}>
-              <Ionicons name="wallet" size={32} color="#ffffff" />
+              <Ionicons name="wallet-outline" size={40} color="white" />
             </View>
             <Text style={[styles.title, { color: themeConfig.colors.text }]}>
-              Finance App
+              Bem-vindo de volta!
             </Text>
             <Text style={[styles.subtitle, { color: themeConfig.colors.textSecondary }]}>
-              Gerencie suas finanças de forma simples
+              Entre na sua conta para continuar
             </Text>
           </View>
 
           {/* Form */}
-          <Card variant="elevated" style={styles.formCard}>
+          <Card style={styles.formCard}>
             <Text style={[styles.formTitle, { color: themeConfig.colors.text }]}>
-              Entrar na sua conta
+              Fazer Login
             </Text>
 
             <Controller
@@ -118,7 +125,6 @@ export default function LoginScreen({ navigation }: Props) {
                   error={errors.email?.message}
                   keyboardType="email-address"
                   autoCapitalize="none"
-                  autoCorrect={false}
                   leftIcon={
                     <Ionicons 
                       name="mail-outline" 

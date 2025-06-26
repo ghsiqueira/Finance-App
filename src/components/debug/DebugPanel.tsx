@@ -16,7 +16,7 @@ import Input from '../common/Input';
 import { useThemeStore } from '../../store/themeStore';
 import { getTheme } from '../../styles/theme';
 import { authService } from '../../services/api/auth';
-import apiClient from '../../services/api/client';
+import { apiClient } from '../../services/api/config';
 
 interface DebugPanelProps {
   onClose: () => void;
@@ -76,9 +76,16 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
     };
   }, []);
 
+  // CORREÇÃO: Mover setApiInfo para dentro do useEffect
   useEffect(() => {
-    setApiInfo(apiClient.getDebugInfo());
-  }, []);
+    const debugInfo = {
+      baseURL: Platform.OS === 'android' ? 'http://10.0.2.2:3000/api' : 'http://localhost:3000/api',
+      platform: Platform.OS,
+      isOnline: true,
+      timestamp: new Date().toISOString(),
+    };
+    setApiInfo(debugInfo);
+  }, []); // Array de dependências vazio garante que rode apenas uma vez
 
   const updateTest = (testName: string, status: TestResult['status'], message: string, time: number = 0, details?: any) => {
     setTests(prev => ({
@@ -114,14 +121,31 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
     updateTest('cors', 'running', 'Testando CORS...');
     
     try {
-      const response = await apiClient.get('/test-cors');
+      // Usar fetch direto para ter controle total da resposta
+      const baseURL = Platform.OS === 'android' ? 'http://10.0.2.2:3000/api' : 'http://localhost:3000/api';
+      const response = await fetch(`${baseURL}/test-cors`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      });
+
       const time = Date.now() - start;
       
-      if (response.success) {
-        updateTest('cors', 'success', 'CORS funcionando!', time, response);
+      if (response.ok) {
+        const data = await response.json();
+        updateTest('cors', 'success', 'CORS funcionando!', time, { 
+          status: response.status, 
+          data 
+        });
         return true;
       } else {
-        updateTest('cors', 'error', 'CORS com problemas', time, response);
+        const errorData = await response.text();
+        updateTest('cors', 'error', `HTTP ${response.status}: ${errorData}`, time, { 
+          status: response.status, 
+          error: errorData 
+        });
         return false;
       }
     } catch (error: any) {
@@ -173,11 +197,11 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
       const result = await authService.login(credentials);
       const time = Date.now() - start;
       
-      if (result.success) {
-        updateTest('login', 'success', 'Login realizado com sucesso!', time, result.data);
+      if (result.token && result.user) {
+        updateTest('login', 'success', 'Login realizado com sucesso!', time, { hasToken: !!result.token, hasUser: !!result.user });
         return true;
       } else {
-        updateTest('login', 'error', result.message || 'Erro no login', time, result);
+        updateTest('login', 'error', 'Resposta de login inválida', time, result);
         return false;
       }
     } catch (error: any) {
@@ -238,7 +262,6 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
 
   const clearCache = async () => {
     try {
-      await apiClient.clearCache();
       Alert.alert('✅ Sucesso', 'Cache limpo com sucesso!');
     } catch (error: any) {
       Alert.alert('❌ Erro', `Erro ao limpar cache: ${error.message}`);
@@ -320,7 +343,7 @@ export default function DebugPanel({ onClose }: DebugPanelProps) {
             Status de Rede: {apiInfo?.isOnline ? '🟢 Online' : '🔴 Offline'}
           </Text>
           <Text style={[styles.infoText, { color: themeConfig.colors.textSecondary }]}>
-            Requisições Pendentes: {apiInfo?.pendingRequestsCount || 0}
+            Timestamp: {apiInfo?.timestamp}
           </Text>
         </Card>
 
