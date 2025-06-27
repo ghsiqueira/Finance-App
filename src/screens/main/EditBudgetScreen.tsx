@@ -46,11 +46,11 @@ interface BudgetFormData {
 }
 
 const periodOptions = [
-  { value: 'weekly' as const, label: 'Semanal', icon: 'calendar-outline', duration: 7 },
-  { value: 'monthly' as const, label: 'Mensal', icon: 'calendar', duration: 30 },
-  { value: 'quarterly' as const, label: 'Trimestral', icon: 'calendar-sharp', duration: 90 },
-  { value: 'yearly' as const, label: 'Anual', icon: 'calendar-sharp', duration: 365 },
-  { value: 'custom' as const, label: 'Personalizado', icon: 'settings-outline', duration: 0 },
+  { value: 'weekly' as const, label: 'Semanal', icon: 'calendar-outline' },
+  { value: 'monthly' as const, label: 'Mensal', icon: 'calendar' },
+  { value: 'quarterly' as const, label: 'Trimestral', icon: 'calendar-sharp' },
+  { value: 'yearly' as const, label: 'Anual', icon: 'calendar-sharp' },
+  { value: 'custom' as const, label: 'Personalizado', icon: 'settings-outline' },
 ];
 
 export default function EditBudgetScreen({ navigation, route }: Props) {
@@ -81,44 +81,68 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
   const [hasChanges, setHasChanges] = useState(false);
   const [originalData, setOriginalData] = useState<BudgetFormData | null>(null);
 
-  // Fetch budget details
+  // Fetch budget
   const { data: budgetResponse, isLoading: budgetLoading } = useQuery({
     queryKey: ['budget', budgetId],
     queryFn: () => budgetService.getBudget(budgetId),
   });
 
-  // Fetch categories
+  const budget = budgetResponse?.data?.budget;
+
+  // Fetch categories for expense type
   const { data: categoriesResponse, isLoading: categoriesLoading } = useQuery({
-    queryKey: ['categories-expense'],
-    queryFn: () => categoryService.getCategories({ type: 'expense' }),
+    queryKey: ['categories-for-budget'],
+    queryFn: () => categoryService.getCategories({ 
+      type: 'expense',
+      includeInactive: false 
+    }),
     staleTime: 5 * 60 * 1000,
   });
 
-  const budget = budgetResponse?.data?.budget;
   const categories = categoriesResponse?.data?.categories || [];
-  const selectedCategory = categories.find(cat => cat._id === formData.categoryId);
-
-  // Debug para categorias
-  useEffect(() => {
-    console.log('🔍 Categories Response:', categoriesResponse);
-    console.log('🔍 Categories Array:', categories);
-    console.log('🔍 Categories Loading:', categoriesLoading);
-  }, [categoriesResponse, categories, categoriesLoading]);
+  
+  // ✅ CORREÇÃO COMPLETA: Buscar categoria selecionada corretamente
+  const selectedCategory = useMemo((): Category | null => {
+    if (!formData.categoryId || !categories.length) return null;
+    
+    // Primeiro, tentar encontrar pela categoria no formData
+    const foundCategory = categories.find(cat => cat._id === formData.categoryId);
+    if (foundCategory) return foundCategory;
+    
+    // Se não encontrar e temos budget com categoria, criar objeto Category válido
+    if (budget?.category) {
+      // ✅ CORREÇÃO: Verificação mais robusta do tipo
+      if (typeof budget.category === 'object' && budget.category !== null && 'name' in budget.category) {
+        // Type assertion segura após verificação
+        const categoryObj = budget.category as any;
+        return {
+          _id: categoryObj._id || budget.categoryId || '',
+          name: categoryObj.name || 'Categoria',
+          icon: categoryObj.icon || 'help-circle',
+          color: categoryObj.color || '#666666',
+          type: (categoryObj.type as 'expense' | 'income' | 'both') || 'expense',
+          userId: categoryObj.userId || '',
+          isDefault: categoryObj.isDefault || false,
+          isActive: categoryObj.isActive !== false,
+        } as Category;
+      }
+    }
+    
+    return null;
+  }, [formData.categoryId, categories, budget]);
 
   // Update budget mutation
   const updateBudgetMutation = useMutation({
-    mutationFn: (data: any) => {
-      console.log('🔄 Atualizando orçamento:', data);
-      return budgetService.updateBudget(budgetId, data);
+    mutationFn: (updateData: any) => {
+      return budgetService.updateBudget(budgetId, updateData);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['budgets'] });
       queryClient.invalidateQueries({ queryKey: ['budget', budgetId] });
+      queryClient.invalidateQueries({ queryKey: ['budgets'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      
       Alert.alert(
         'Sucesso!',
-        'Orçamento atualizado com sucesso!',
+        'Orçamento atualizado com sucesso.',
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     },
@@ -157,10 +181,28 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
         endDate = addMonths(new Date(), 1);
       }
       
+      // ✅ CORREÇÃO PRINCIPAL: Extração segura do categoryId
+      let categoryId = '';
+      
+      // Caso 1: budget.category é um objeto populado
+      if (budget.category && typeof budget.category === 'object' && 'name' in budget.category) {
+        const categoryObj = budget.category as any;
+        categoryId = categoryObj._id || '';
+      }
+      // Caso 2: budget.categoryId é string
+      else if (typeof budget.categoryId === 'string') {
+        categoryId = budget.categoryId;
+      }
+      // Caso 3: budget.categoryId é objeto com _id
+      else if (budget.categoryId && typeof budget.categoryId === 'object') {
+        const categoryIdObj = budget.categoryId as any;
+        categoryId = categoryIdObj._id || '';
+      }
+      
       const budgetData: BudgetFormData = {
         name: budget.name || '',
         amount: (budget.amount || 0).toString(),
-        categoryId: budget.categoryId || '',
+        categoryId, // ✅ Usar categoryId extraído de forma segura
         period: budget.period || 'monthly',
         startDate,
         endDate,
@@ -171,6 +213,8 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
       };
       
       console.log('📋 Form data definido:', budgetData);
+      console.log('🏷️ CategoryId definido como:', categoryId);
+      
       setFormData(budgetData);
       setOriginalData(budgetData);
     }
@@ -184,7 +228,7 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
     }
   }, [formData, originalData]);
 
-  // Auto-calculate end date when period changes
+  // Auto-calculate end date when period changes (like in AddBudgetScreen)
   useEffect(() => {
     if (formData.period !== 'custom') {
       const start = startOfDay(formData.startDate);
@@ -225,41 +269,16 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
     const amountValue = formData.amount.replace(/[^\d,]/g, '').replace(',', '.');
     const parsedAmount = parseFloat(amountValue);
     
-    if (!formData.amount.trim() || isNaN(parsedAmount) || parsedAmount <= 0) {
-      newErrors.amount = 'Valor deve ser um número válido maior que zero';
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      newErrors.amount = 'Valor deve ser maior que zero';
     }
 
     if (!formData.categoryId) {
       newErrors.categoryId = 'Categoria é obrigatória';
     }
 
-    // Validar datas com verificação mais robusta
-    if (!formData.startDate) {
-      newErrors.startDate = 'Data inicial é obrigatória';
-    } else {
-      const startDate = formData.startDate instanceof Date ? formData.startDate : new Date(formData.startDate);
-      if (isNaN(startDate.getTime())) {
-        newErrors.startDate = 'Data inicial inválida';
-      }
-    }
-
-    if (!formData.endDate) {
-      newErrors.endDate = 'Data final é obrigatória';
-    } else {
-      const endDate = formData.endDate instanceof Date ? formData.endDate : new Date(formData.endDate);
-      if (isNaN(endDate.getTime())) {
-        newErrors.endDate = 'Data final inválida';
-      }
-    }
-
-    // Comparar datas apenas se ambas são válidas
-    if (formData.startDate && formData.endDate && !newErrors.startDate && !newErrors.endDate) {
-      const startDate = formData.startDate instanceof Date ? formData.startDate : new Date(formData.startDate);
-      const endDate = formData.endDate instanceof Date ? formData.endDate : new Date(formData.endDate);
-      
-      if (startDate >= endDate) {
-        newErrors.endDate = 'Data final deve ser posterior à data inicial';
-      }
+    if (formData.startDate >= formData.endDate) {
+      newErrors.endDate = 'Data final deve ser posterior à data inicial';
     }
 
     const threshold = parseFloat(formData.alertThreshold);
@@ -271,36 +290,10 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
     return Object.keys(newErrors).length === 0;
   };
 
-  // Calculate progress and status
-  const budgetStats = useMemo(() => {
-    if (!budget) return null;
-
-    const spent = budget.spent || 0;
-    const amountValue = formData.amount.replace(/[^\d,]/g, '').replace(',', '.');
-    const amount = parseFloat(amountValue) || budget.amount;
-    const percentage = amount > 0 ? (spent / amount) * 100 : 0;
-    const remaining = amount - spent;
-    const threshold = parseFloat(formData.alertThreshold);
-
-    let status: 'safe' | 'warning' | 'critical' | 'exceeded' = 'safe';
-    if (percentage >= 100) status = 'exceeded';
-    else if (percentage >= threshold) status = 'critical';
-    else if (percentage >= threshold * 0.8) status = 'warning';
-
-    return {
-      spent,
-      amount,
-      percentage,
-      remaining,
-      status,
-      isOverBudget: spent > amount,
-    };
-  }, [budget, formData.amount, formData.alertThreshold]);
-
   const handleSubmit = () => {
     if (!validateForm()) return;
 
-    // Converter valor para número corretamente
+    // Validar valor
     const amountValue = formData.amount.replace(/[^\d,]/g, '').replace(',', '.');
     const parsedAmount = parseFloat(amountValue);
     
@@ -331,9 +324,6 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
     };
 
     console.log('📤 Dados enviados:', updateData);
-    console.log('📅 Start Date Object:', startDate);
-    console.log('📅 End Date Object:', endDate);
-    
     updateBudgetMutation.mutate(updateData);
   };
 
@@ -354,25 +344,6 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
     } else {
       navigation.goBack();
     }
-  };
-
-  const handleDuplicate = () => {
-    Alert.alert(
-      'Duplicar Orçamento',
-      'Deseja criar uma cópia deste orçamento?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Duplicar',
-          onPress: () => {
-            // Navegar para criação com dados pré-preenchidos
-            navigation.navigate('AddBudget', { 
-              categoryId: formData.categoryId
-            });
-          },
-        },
-      ]
-    );
   };
 
   const toggleBudgetStatus = () => {
@@ -407,6 +378,7 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
         },
       ]}
       onPress={() => {
+        console.log('🏷️ Categoria selecionada:', category.name, category._id);
         setFormData(prev => ({ ...prev, categoryId: category._id }));
         setShowCategoryModal(false);
       }}
@@ -503,88 +475,36 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
           </TouchableOpacity>
         }
         rightElement={
-          <View style={styles.headerActions}>
-            <TouchableOpacity onPress={handleDuplicate} style={styles.headerButton}>
-              <Ionicons name="copy-outline" size={22} color={themeConfig.colors.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={toggleBudgetStatus} style={styles.headerButton}>
-              <Ionicons 
-                name={formData.isActive ? "pause-circle-outline" : "play-circle-outline"} 
-                size={22} 
-                color={formData.isActive ? themeConfig.colors.warning : themeConfig.colors.success} 
-              />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity onPress={toggleBudgetStatus} style={styles.headerButton}>
+            <Ionicons 
+              name={formData.isActive ? "pause-circle-outline" : "play-circle-outline"} 
+              size={22} 
+              color={formData.isActive ? themeConfig.colors.warning : themeConfig.colors.success} 
+            />
+          </TouchableOpacity>
         }
       />
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Status Card */}
-        {budgetStats && (
-          <Card style={[styles.statusCard, { 
-            borderLeftColor: formData.isActive ? themeConfig.colors.primary : themeConfig.colors.textSecondary 
-          }]}>
-            <View style={styles.statusHeader}>
-              <View style={styles.statusInfo}>
-                <Text style={[styles.statusTitle, { color: themeConfig.colors.text }]}>
-                  Status do Orçamento
-                </Text>
-                <Text style={[
-                  styles.statusBadge,
-                  {
-                    color: formData.isActive ? themeConfig.colors.primary : themeConfig.colors.textSecondary,
-                    backgroundColor: formData.isActive 
-                      ? themeConfig.colors.primary + '20' 
-                      : themeConfig.colors.textSecondary + '20'
-                  }
-                ]}>
-                  {formData.isActive ? 'Ativo' : 'Pausado'}
-                </Text>
-              </View>
-              
-              <View style={styles.progressContainer}>
-                <Text style={[styles.progressText, { color: themeConfig.colors.text }]}>
-                  {formatCurrency(budgetStats.spent)} de {formatCurrency(budgetStats.amount)}
-                </Text>
-                <View style={[styles.progressBar, { backgroundColor: themeConfig.colors.border }]}>
-                  <View style={[
-                    styles.progressFill,
-                    {
-                      width: `${Math.min(budgetStats.percentage, 100)}%`,
-                      backgroundColor: budgetStats.status === 'exceeded' 
-                        ? themeConfig.colors.error
-                        : budgetStats.status === 'critical'
-                        ? themeConfig.colors.warning
-                        : themeConfig.colors.success
-                    }
-                  ]} />
-                </View>
-                <Text style={[styles.progressPercentage, { color: themeConfig.colors.textSecondary }]}>
-                  {budgetStats.percentage.toFixed(1)}% utilizado
-                </Text>
-              </View>
-            </View>
-
-            {hasChanges && (
-              <View style={[styles.changesWarning, { backgroundColor: themeConfig.colors.warning + '20' }]}>
-                <Ionicons name="information-circle" size={16} color={themeConfig.colors.warning} />
-                <Text style={[styles.changesText, { color: themeConfig.colors.warning }]}>
-                  Você tem alterações não salvas
-                </Text>
-              </View>
-            )}
-          </Card>
+        {/* Status Banner */}
+        {!formData.isActive && (
+          <View style={[styles.statusBanner, { backgroundColor: themeConfig.colors.warning + '20' }]}>
+            <Ionicons name="pause-circle" size={20} color={themeConfig.colors.warning} />
+            <Text style={[styles.statusText, { color: themeConfig.colors.warning }]}>
+              Este orçamento está pausado
+            </Text>
+          </View>
         )}
 
-        {/* Basic Information */}
+        {/* Nome e Valor */}
         <Card style={styles.section}>
           <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-            📝 Informações Básicas
+            💰 Detalhes do Orçamento
           </Text>
 
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: themeConfig.colors.text }]}>
-              Nome do Orçamento *
+              Nome do Orçamento
             </Text>
             <TextInput
               style={[
@@ -595,10 +515,10 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
                   color: themeConfig.colors.text,
                 },
               ]}
+              placeholder="Ex: Alimentação Mensal"
+              placeholderTextColor={themeConfig.colors.textSecondary}
               value={formData.name}
               onChangeText={(text) => setFormData(prev => ({ ...prev, name: text }))}
-              placeholder="Ex: Alimentação Janeiro"
-              placeholderTextColor={themeConfig.colors.textSecondary}
             />
             {errors.name && (
               <Text style={[styles.errorText, { color: themeConfig.colors.error }]}>
@@ -609,7 +529,7 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
 
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: themeConfig.colors.text }]}>
-              Valor do Orçamento *
+              Valor do Orçamento
             </Text>
             <TextInput
               style={[
@@ -620,14 +540,10 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
                   color: themeConfig.colors.text,
                 },
               ]}
-              value={formData.amount}
-              onChangeText={(text) => {
-                // Permitir apenas números e vírgula
-                const cleanText = text.replace(/[^\d,]/g, '');
-                setFormData(prev => ({ ...prev, amount: cleanText }));
-              }}
-              placeholder="0,00"
+              placeholder="R$ 0,00"
               placeholderTextColor={themeConfig.colors.textSecondary}
+              value={formData.amount}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, amount: text }))}
               keyboardType="numeric"
             />
             {errors.amount && (
@@ -636,15 +552,18 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
               </Text>
             )}
           </View>
+        </Card>
+
+        {/* Categoria */}
+        <Card style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
+            🏷️ Categoria
+          </Text>
 
           <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: themeConfig.colors.text }]}>
-              Categoria *
-            </Text>
             <TouchableOpacity
               style={[
-                styles.input,
-                styles.categorySelector,
+                styles.selectButton,
                 {
                   backgroundColor: themeConfig.colors.surface,
                   borderColor: errors.categoryId ? themeConfig.colors.error : themeConfig.colors.border,
@@ -676,7 +595,7 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
           </View>
         </Card>
 
-        {/* Period */}
+        {/* Período - Igual ao AddBudgetScreen */}
         <Card style={styles.section}>
           <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
             📅 Período do Orçamento
@@ -719,7 +638,8 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
                     backgroundColor: formData.period === 'custom' 
                       ? themeConfig.colors.surface 
                       : themeConfig.colors.surface + '80',
-                    borderColor: errors.endDate ? themeConfig.colors.error : themeConfig.colors.border,
+                    borderColor: themeConfig.colors.border,
+                    opacity: formData.period === 'custom' ? 1 : 0.6,
                   },
                 ]}
                 onPress={() => formData.period === 'custom' && setShowEndDatePicker(true)}
@@ -728,10 +648,7 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
                 <Ionicons 
                   name="calendar-outline" 
                   size={20} 
-                  color={formData.period === 'custom' 
-                    ? themeConfig.colors.primary 
-                    : themeConfig.colors.textSecondary
-                  } 
+                  color={formData.period === 'custom' ? themeConfig.colors.primary : themeConfig.colors.textSecondary} 
                 />
                 <Text style={[
                   styles.dateText, 
@@ -746,18 +663,18 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
               </TouchableOpacity>
             </View>
           </View>
-
-          {errors.endDate && (
-            <Text style={[styles.errorText, { color: themeConfig.colors.error }]}>
-              {errors.endDate}
+          
+          {formData.period !== 'custom' && (
+            <Text style={[styles.periodInfo, { color: themeConfig.colors.textSecondary }]}>
+              A data final é calculada automaticamente com base no período selecionado
             </Text>
           )}
         </Card>
 
-        {/* Advanced Settings */}
+        {/* Configurações Avançadas */}
         <Card style={styles.section}>
           <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-            ⚙️ Configurações Avançadas
+            ⚙️ Configurações
           </Text>
 
           <View style={styles.inputGroup}>
@@ -773,29 +690,28 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
                   color: themeConfig.colors.text,
                 },
               ]}
-              value={formData.alertThreshold}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, alertThreshold: text }))}
               placeholder="80"
               placeholderTextColor={themeConfig.colors.textSecondary}
+              value={formData.alertThreshold}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, alertThreshold: text }))}
               keyboardType="numeric"
             />
-            <Text style={[styles.helperText, { color: themeConfig.colors.textSecondary }]}>
-              Receba alertas quando atingir este percentual do orçamento
-            </Text>
             {errors.alertThreshold && (
               <Text style={[styles.errorText, { color: themeConfig.colors.error }]}>
                 {errors.alertThreshold}
               </Text>
             )}
+            <Text style={[styles.helperText, { color: themeConfig.colors.textSecondary }]}>
+              Você será notificado quando atingir este percentual do orçamento
+            </Text>
           </View>
 
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: themeConfig.colors.text }]}>
-              Observações (Opcional)
+              Notas (Opcional)
             </Text>
             <TextInput
               style={[
-                styles.input,
                 styles.textArea,
                 {
                   backgroundColor: themeConfig.colors.surface,
@@ -803,23 +719,22 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
                   color: themeConfig.colors.text,
                 },
               ]}
-              value={formData.notes}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, notes: text }))}
               placeholder="Adicione observações sobre este orçamento..."
               placeholderTextColor={themeConfig.colors.textSecondary}
+              value={formData.notes}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, notes: text }))}
               multiline
               numberOfLines={3}
-              textAlignVertical="top"
             />
           </View>
 
-          <View style={styles.toggleRow}>
-            <View>
-              <Text style={[styles.toggleLabel, { color: themeConfig.colors.text }]}>
+          <View style={styles.switchRow}>
+            <View style={styles.switchInfo}>
+              <Text style={[styles.switchLabel, { color: themeConfig.colors.text }]}>
                 Renovação Automática
               </Text>
-              <Text style={[styles.toggleDescription, { color: themeConfig.colors.textSecondary }]}>
-                Criar novo orçamento automaticamente quando este expirar
+              <Text style={[styles.switchDescription, { color: themeConfig.colors.textSecondary }]}>
+                Criar automaticamente um novo orçamento ao final do período
               </Text>
             </View>
             <Switch
@@ -827,30 +742,31 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
               onValueChange={(value) => setFormData(prev => ({ ...prev, autoRenew: value }))}
               trackColor={{ 
                 false: themeConfig.colors.border, 
-                true: themeConfig.colors.primary + '60' 
+                true: themeConfig.colors.primary + '40' 
               }}
               thumbColor={formData.autoRenew ? themeConfig.colors.primary : themeConfig.colors.surface}
             />
           </View>
         </Card>
-      </ScrollView>
 
-      {/* Action Buttons */}
-      <View style={[styles.footer, { backgroundColor: themeConfig.colors.background }]}>
-        <Button
-          title="Cancelar"
-          variant="outline"
-          onPress={handleCancel}
-          style={styles.footerButton}
-        />
-        <Button
-          title="Salvar Alterações"
-          onPress={handleSubmit}
-          loading={updateBudgetMutation.isPending}
-          disabled={!hasChanges || updateBudgetMutation.isPending}
-          style={styles.footerButton}
-        />
-      </View>
+        {/* Botões */}
+        <View style={styles.buttonContainer}>
+          <Button
+            title="Cancelar"
+            variant="secondary"
+            onPress={handleCancel}
+            style={styles.cancelButton}
+          />
+          <Button
+            title={updateBudgetMutation.isPending ? "Salvando..." : "Salvar Alterações"}
+            onPress={handleSubmit}
+            disabled={updateBudgetMutation.isPending || !hasChanges}
+            style={styles.saveButton}
+          />
+        </View>
+
+        <View style={styles.bottomSpacer} />
+      </ScrollView>
 
       {/* Category Modal */}
       <Modal
@@ -867,13 +783,12 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
               <Ionicons name="close" size={24} color={themeConfig.colors.text} />
             </TouchableOpacity>
           </View>
-          
           <FlatList
             data={categories}
-            renderItem={renderCategoryItem}
             keyExtractor={(item) => item._id}
-            contentContainerStyle={styles.categoriesList}
-            ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+            renderItem={renderCategoryItem}
+            style={styles.categoryList}
+            showsVerticalScrollIndicator={false}
           />
         </SafeAreaView>
       </Modal>
@@ -893,12 +808,12 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
         />
       )}
 
-      {showEndDatePicker && (
+      {showEndDatePicker && formData.period === 'custom' && (
         <DateTimePicker
           value={formData.endDate}
           mode="date"
           display="default"
-          minimumDate={formData.startDate}
+          minimumDate={addDays(formData.startDate, 1)}
           onChange={(event, selectedDate) => {
             setShowEndDatePicker(false);
             if (selectedDate) {
@@ -919,14 +834,163 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  headerActions: {
+  headerButton: {
+    padding: 4,
+  },
+  statusBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    gap: 8,
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  section: {
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 16,
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+  },
+  textArea: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  selectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+  },
+  selectedCategory: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  headerButton: {
-    padding: 8,
+  categoryIconSmall: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectedCategoryText: {
+    fontSize: 16,
+  },
+  placeholderText: {
+    fontSize: 16,
+  },
+  periodGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  periodOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 6,
+    minWidth: 80,
+  },
+  periodOptionText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  dateRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  dateInputGroup: {
+    flex: 1,
+  },
+  dateInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
     borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+  },
+  dateText: {
+    fontSize: 16,
+    flex: 1,
+  },
+  periodInfo: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  switchInfo: {
+    flex: 1,
+    marginRight: 16,
+  },
+  switchLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  switchDescription: {
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  helperText: {
+    fontSize: 12,
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  errorText: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  cancelButton: {
+    flex: 1,
+  },
+  saveButton: {
+    flex: 2,
+  },
+  bottomSpacer: {
+    height: 24,
   },
   errorContainer: {
     flex: 1,
@@ -950,182 +1014,6 @@ const styles = StyleSheet.create({
   errorButton: {
     minWidth: 120,
   },
-  statusCard: {
-    marginBottom: 16,
-    borderLeftWidth: 4,
-  },
-  statusHeader: {
-    gap: 12,
-  },
-  statusInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  statusTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  statusBadge: {
-    fontSize: 12,
-    fontWeight: '600',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  progressContainer: {
-    gap: 8,
-  },
-  progressText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  progressBar: {
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  progressPercentage: {
-    fontSize: 12,
-    textAlign: 'right',
-  },
-  changesWarning: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 8,
-  },
-  changesText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  section: {
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 16,
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  textArea: {
-    minHeight: 80,
-  },
-  errorText: {
-    fontSize: 12,
-    marginTop: 4,
-  },
-  helperText: {
-    fontSize: 12,
-    marginTop: 4,
-  },
-  categorySelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  selectedCategory: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  categoryIconSmall: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  selectedCategoryText: {
-    fontSize: 16,
-  },
-  placeholderText: {
-    fontSize: 16,
-  },
-  periodGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 16,
-  },
-  periodOption: {
-    flex: 1,
-    minWidth: '45%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 8,
-  },
-  periodOptionText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  dateRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  dateInputGroup: {
-    flex: 1,
-  },
-  dateInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
-  },
-  dateText: {
-    fontSize: 16,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-  },
-  toggleLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 4,
-  },
-  toggleDescription: {
-    fontSize: 14,
-  },
-  footer: {
-    flexDirection: 'row',
-    padding: 16,
-    gap: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.1)',
-  },
-  footerButton: {
-    flex: 1,
-  },
   modalContainer: {
     flex: 1,
   },
@@ -1140,7 +1028,8 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
-  categoriesList: {
+  categoryList: {
+    flex: 1,
     padding: 16,
   },
   categoryItem: {
@@ -1149,7 +1038,8 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    marginBottom: 12,
+    marginBottom: 8,
+    gap: 12,
   },
   categoryIcon: {
     width: 40,
@@ -1157,7 +1047,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
   },
   categoryInfo: {
     flex: 1,
@@ -1165,9 +1054,9 @@ const styles = StyleSheet.create({
   categoryName: {
     fontSize: 16,
     fontWeight: '500',
-    marginBottom: 2,
   },
   categoryType: {
     fontSize: 12,
+    marginTop: 2,
   },
 });

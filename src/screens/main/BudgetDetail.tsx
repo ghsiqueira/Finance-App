@@ -73,6 +73,7 @@ export default function BudgetDetailScreen({ navigation, route }: Props) {
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
     },
     onError: (error: any) => {
+      console.error('❌ Erro no toggle:', error);
       Alert.alert(
         'Erro',
         error.response?.data?.message || 'Erro ao alterar status do orçamento.'
@@ -120,7 +121,10 @@ export default function BudgetDetailScreen({ navigation, route }: Props) {
         },
         {
           text: action.charAt(0).toUpperCase() + action.slice(1),
-          onPress: () => toggleBudgetMutation.mutate(),
+          onPress: () => {
+            console.log('🔄 Iniciando toggle do orçamento');
+            toggleBudgetMutation.mutate();
+          },
         },
       ]
     );
@@ -147,6 +151,7 @@ export default function BudgetDetailScreen({ navigation, route }: Props) {
     return diffDays;
   };
 
+  // ✅ FUNÇÃO CORRIGIDA - Calcular isExceeded localmente
   const getBudgetStatus = (budget: any) => {
     if (!budget.isActive) {
       return {
@@ -166,7 +171,11 @@ export default function BudgetDetailScreen({ navigation, route }: Props) {
       };
     }
 
-    if (budget.isExceeded) {
+    // ✅ CORREÇÃO: Calcular isExceeded localmente
+    const isExceeded = budget.spent > budget.amount;
+    const spentPercentage = budget.amount > 0 ? (budget.spent / budget.amount) * 100 : 0;
+
+    if (isExceeded) {
       return {
         label: 'Excedido',
         color: themeConfig.colors.error,
@@ -174,7 +183,7 @@ export default function BudgetDetailScreen({ navigation, route }: Props) {
       };
     }
 
-    if (budget.spentPercentage >= (budget.alertThreshold || 80)) {
+    if (spentPercentage >= (budget.alertThreshold || 80)) {
       return {
         label: 'Próximo do Limite',
         color: themeConfig.colors.warning,
@@ -249,6 +258,9 @@ export default function BudgetDetailScreen({ navigation, route }: Props) {
   const budgetStatus = getBudgetStatus(budget);
   const daysRemaining = getDaysRemaining(budget.endDate);
 
+  // ✅ CORREÇÃO: Calcular isExceeded localmente
+  const isExceeded = budget.spent > budget.amount;
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: themeConfig.colors.background }]}>
       <Header 
@@ -288,7 +300,7 @@ export default function BudgetDetailScreen({ navigation, route }: Props) {
                 Progresso do Orçamento
               </Text>
               <Text style={[styles.progressPercentage, { 
-                color: budget.isExceeded ? themeConfig.colors.error : themeConfig.colors.primary 
+                color: isExceeded ? themeConfig.colors.error : themeConfig.colors.primary 
               }]}>
                 {budget.spentPercentage.toFixed(1)}%
               </Text>
@@ -299,7 +311,7 @@ export default function BudgetDetailScreen({ navigation, route }: Props) {
                 styles.progressFill,
                 {
                   width: `${Math.min(budget.spentPercentage, 100)}%`,
-                  backgroundColor: budget.isExceeded 
+                  backgroundColor: isExceeded 
                     ? themeConfig.colors.error 
                     : budget.spentPercentage >= (budget.alertThreshold || 80)
                       ? themeConfig.colors.warning
@@ -480,7 +492,7 @@ export default function BudgetDetailScreen({ navigation, route }: Props) {
           </Card>
         )}
 
-        {/* Actions Card */}
+        {/* Actions Card - SEM DUPLICAR */}
         <Card variant="elevated" style={styles.actionsCard}>
           <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
             Ações
@@ -515,7 +527,10 @@ export default function BudgetDetailScreen({ navigation, route }: Props) {
                 styles.actionButtonText, 
                 { color: budget.isActive ? themeConfig.colors.warning : themeConfig.colors.success }
               ]}>
-                {budget.isActive ? 'Pausar Orçamento' : 'Reativar Orçamento'}
+                {toggleBudgetMutation.isPending 
+                  ? (budget.isActive ? 'Pausando...' : 'Ativando...')
+                  : (budget.isActive ? 'Pausar Orçamento' : 'Reativar Orçamento')
+                }
               </Text>
             </TouchableOpacity>
 

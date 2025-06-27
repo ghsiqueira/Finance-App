@@ -185,6 +185,17 @@ class ApiClient {
     return response.data.data as T;
   }
 
+  // 🔥 ✅ CORREÇÃO: Método para requisições PATCH (estava faltando)
+  async patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+    const response = await this.client.patch<ApiResponse<T>>(url, data, config);
+    
+    if (!response.data.success) {
+      throw new Error(response.data.message || 'Erro na requisição');
+    }
+    
+    return response.data.data as T;
+  }
+
   // 🔥 Método para requisições DELETE
   async delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.client.delete<ApiResponse<T>>(url, config);
@@ -222,6 +233,42 @@ class ApiClient {
   async clearAuthToken() {
     await AsyncStorage.removeItem('auth_token');
     delete this.client.defaults.headers.Authorization;
+  }
+
+  // 🔥 ✅ ADICIONAL: Método para fazer upload de arquivos
+  async upload<T = any>(url: string, formData: FormData, onProgress?: (progress: number) => void): Promise<T> {
+    const response = await this.client.post<ApiResponse<T>>(url, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (progressEvent) => {
+        if (onProgress && progressEvent.total) {
+          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          onProgress(progress);
+        }
+      },
+    });
+    
+    if (!response.data.success) {
+      throw new Error(response.data.message || 'Erro no upload');
+    }
+    
+    return response.data.data as T;
+  }
+
+  // 🔥 ✅ ADICIONAL: Método para download de arquivos
+  async download(url: string, onProgress?: (progress: number) => void): Promise<Blob> {
+    const response = await this.client.get(url, {
+      responseType: 'blob',
+      onDownloadProgress: (progressEvent) => {
+        if (onProgress && progressEvent.total) {
+          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          onProgress(progress);
+        }
+      },
+    });
+    
+    return response.data;
   }
 }
 

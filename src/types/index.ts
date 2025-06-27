@@ -189,6 +189,7 @@ export interface Transaction {
   updatedAt: string;
 }
 
+// ✅ CORREÇÃO PRINCIPAL: Interface Budget com isExceeded
 export interface Budget {
   _id: string;
   name: string;
@@ -207,9 +208,10 @@ export interface Budget {
   notes?: string;
   color: string;
   
-  // Propriedades calculadas
+  // Propriedades calculadas - ✅ ISEXCEEDED ADICIONADA
   spentPercentage: number;
   remaining: number;
+  isExceeded: boolean; // ✅ PROPRIEDADE ADICIONADA
   status: 'safe' | 'warning' | 'critical' | 'exceeded';
   daysRemaining: number;
   dailyBudget: number;

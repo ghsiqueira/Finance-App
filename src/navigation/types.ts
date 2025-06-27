@@ -1,4 +1,4 @@
-// src/navigation/types.ts - Versão Completa e Corrigida
+// src/navigation/types.ts - TIPOS CORRIGIDOS
 
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { CompositeScreenProps } from '@react-navigation/native';
@@ -24,7 +24,16 @@ export type MainTabParamList = {
   Profile: undefined;
 };
 
-// 🔥 CORRIGIDO: MainStackParamList com tipos corretos para todos os parâmetros
+// ✅ CORREÇÃO: Interface para dados de template/duplicação
+interface BudgetTemplateData {
+  name?: string;
+  amount?: number;
+  period?: 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+  alertThreshold?: number;
+  notes?: string;
+}
+
+// ✅ CORREÇÃO: MainStackParamList com tipos corretos
 export type MainStackParamList = {
   MainTabs: { screen?: keyof MainTabParamList }; 
   
@@ -42,8 +51,11 @@ export type MainStackParamList = {
   EditTransaction: { transactionId: string };
   TransactionDetail: { transactionId: string };
   
-  // Orçamentos - CORRIGIDO: Aceita categoryId como parâmetro opcional
-  AddBudget: { categoryId?: string } | undefined;
+  // ✅ CORREÇÃO: Orçamentos com templateData ao invés de duplicateData
+  AddBudget: { 
+    categoryId?: string;
+    templateData?: BudgetTemplateData;
+  } | undefined;
   EditBudget: { budgetId: string };
   BudgetDetail: { budgetId: string };
   
@@ -77,6 +89,7 @@ export type MainTabScreenProps<Screen extends keyof MainTabParamList> =
 export type MainStackScreenProps<Screen extends keyof MainStackParamList> =
   NativeStackScreenProps<MainStackParamList, Screen>;
 
+// Global declaration para React Navigation
 declare global {
   namespace ReactNavigation {
     interface RootParamList extends RootStackParamList {}

@@ -419,35 +419,6 @@ export default function BudgetsScreen({ navigation }: Props) {
         }
       />
 
-      {/* ✅ DEBUG INFO - melhorado */}
-      <Card style={[styles.statsCard, { backgroundColor: '#1a1a2e' }]}>
-        <Text style={[styles.statsTitle, { color: '#fff' }]}>
-          🔍 DEBUG INFO
-        </Text>
-        <Text style={{ color: '#fff', fontSize: 12 }}>
-          Orçamentos totais: {budgets.length}
-        </Text>
-        <Text style={{ color: '#fff', fontSize: 12 }}>
-          Orçamentos filtrados: {filteredBudgets.length}
-        </Text>
-        <Text style={{ color: '#fff', fontSize: 12 }}>
-          Categorias: {categories.length}
-        </Text>
-        <Text style={{ color: '#fff', fontSize: 12 }}>
-          Filtro atual: {selectedFilter}
-        </Text>
-        <Text style={{ color: '#fff', fontSize: 12 }}>
-          Ativos: {budgets.filter(b => b.isActive).length}
-        </Text>
-        <Text style={{ color: '#fff', fontSize: 12 }}>
-          Pausados: {budgets.filter(b => !b.isActive).length}
-        </Text>
-        
-        <Text style={{ color: '#ff6666', fontSize: 11, marginTop: 8 }}>
-          Verifique o console para logs detalhados
-        </Text>
-      </Card>
-
       {/* ✅ Estatísticas Gerais */}
       {(totalStats.activeBudgetsCount > 0 || totalStats.pausedBudgetsCount > 0) && (
         <Card style={styles.statsCard}>
