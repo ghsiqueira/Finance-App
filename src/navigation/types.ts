@@ -1,4 +1,5 @@
-// src/navigation/types.ts
+// src/navigation/types.ts - Versão Completa e Corrigida
+
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { CompositeScreenProps } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -23,7 +24,7 @@ export type MainTabParamList = {
   Profile: undefined;
 };
 
-// 🔥 CORRIGIDO: MainStackParamList completo
+// 🔥 CORRIGIDO: MainStackParamList com tipos corretos para todos os parâmetros
 export type MainStackParamList = {
   MainTabs: { screen?: keyof MainTabParamList }; 
   
@@ -37,12 +38,12 @@ export type MainStackParamList = {
       notes?: string;
       paymentMethod: string;
     };
-  };
+  } | undefined;
   EditTransaction: { transactionId: string };
   TransactionDetail: { transactionId: string };
   
-  // Orçamentos
-  AddBudget: undefined;
+  // Orçamentos - CORRIGIDO: Aceita categoryId como parâmetro opcional
+  AddBudget: { categoryId?: string } | undefined;
   EditBudget: { budgetId: string };
   BudgetDetail: { budgetId: string };
   
@@ -55,7 +56,7 @@ export type MainStackParamList = {
   Reports: undefined;
   Settings: undefined;
   EditProfile: undefined;
-  ChangePassword: undefined; // 🔥 ADICIONADO
+  ChangePassword: undefined;
   
   // Gerenciamento
   CategoryManagement: undefined;

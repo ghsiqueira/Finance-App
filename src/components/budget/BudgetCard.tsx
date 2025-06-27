@@ -1,9 +1,9 @@
-// src/components/budget/BudgetCard.tsx - Card para exibir orçamento
+// src/components/budget/BudgetCard.tsx - Versão Corrigida
 
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { format } from 'date-fns';
+import { format, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 import { useThemeStore } from '../../store/themeStore';
@@ -29,7 +29,25 @@ export default function BudgetCard({
   const { theme } = useThemeStore();
   const themeConfig = getTheme(theme);
 
-  const getStatusConfig = (status: Budget['status']) => {
+  // Calcular propriedades se não existirem
+  const spentPercentage = budget.spentPercentage ?? (budget.amount > 0 ? (budget.spent / budget.amount) * 100 : 0);
+  const remaining = budget.remaining ?? (budget.amount - budget.spent);
+  const daysRemaining = budget.daysRemaining ?? differenceInDays(new Date(budget.endDate), new Date());
+  const dailyBudget = budget.dailyBudget ?? (remaining / Math.max(daysRemaining, 1));
+
+  // Calcular status se não existir
+  const getStatus = (): 'safe' | 'warning' | 'critical' | 'exceeded' => {
+    if (budget.status) return budget.status;
+    
+    if (spentPercentage >= 100) return 'exceeded';
+    if (spentPercentage >= 80) return 'critical';
+    if (spentPercentage >= 60) return 'warning';
+    return 'safe';
+  };
+
+  const status = getStatus();
+
+  const getStatusConfig = (status: 'safe' | 'warning' | 'critical' | 'exceeded') => {
     switch (status) {
       case 'safe':
         return {
@@ -69,35 +87,22 @@ export default function BudgetCard({
     }
   };
 
-  const statusConfig = getStatusConfig(budget.status);
+  const statusConfig = getStatusConfig(status);
 
   const getProgressBarColor = () => {
-    if (budget.spentPercentage >= 100) return themeConfig.colors.error;
-    if (budget.spentPercentage >= budget.alertThreshold) return themeConfig.colors.warning;
+    if (spentPercentage >= 100) return themeConfig.colors.error;
+    if (spentPercentage >= 80) return themeConfig.colors.warning;
     return themeConfig.colors.success;
   };
 
-  const renderProgressBar = () => {
-    const progressWidth = Math.min(budget.spentPercentage, 100);
-    
-    return (
-      <View style={styles.progressContainer}>
-        <View style={[styles.progressBar, { backgroundColor: themeConfig.colors.border }]}>
-          <View 
-            style={[
-              styles.progressFill,
-              { 
-                width: `${progressWidth}%`,
-                backgroundColor: getProgressBarColor(),
-              }
-            ]} 
-          />
-        </View>
-        <Text style={[styles.progressText, { color: themeConfig.colors.textSecondary }]}>
-          {budget.spentPercentage.toFixed(1)}%
-        </Text>
-      </View>
-    );
+  const formatPeriod = (period: string) => {
+    const periodMap = {
+      weekly: 'Semanal',
+      monthly: 'Mensal',
+      quarterly: 'Trimestral',
+      yearly: 'Anual',
+    };
+    return periodMap[period as keyof typeof periodMap] || period;
   };
 
   return (
@@ -106,108 +111,147 @@ export default function BudgetCard({
         styles.container,
         {
           backgroundColor: themeConfig.colors.card,
-          borderColor: statusConfig.color,
-          borderLeftWidth: 4,
-        }
+          borderColor: themeConfig.colors.border,
+        },
       ]}
       onPress={onPress}
-      activeOpacity={0.7}
+      disabled={!onPress}
+      activeOpacity={onPress ? 0.7 : 1}
     >
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.categoryInfo}>
-          <View style={[styles.categoryIcon, { backgroundColor: budget.category?.color + '20' }]}>
-            <Text style={styles.categoryEmoji}>{budget.category?.icon || '💰'}</Text>
-          </View>
-          
-          <View style={styles.titleContainer}>
-            <Text style={[styles.budgetName, { color: themeConfig.colors.text }]}>
-              {budget.name}
-            </Text>
-            <Text style={[styles.categoryName, { color: themeConfig.colors.textSecondary }]}>
-              {budget.category?.name || 'Categoria'}
-            </Text>
-          </View>
+        <View style={styles.titleContainer}>
+          <Text style={[styles.title, { color: themeConfig.colors.text }]}>
+            {budget.name}
+          </Text>
+          <Text style={[styles.period, { color: themeConfig.colors.textSecondary }]}>
+            {formatPeriod(budget.period)}
+          </Text>
         </View>
-
-        {showActions && (
-          <View style={styles.actions}>
-            <TouchableOpacity onPress={onEdit} style={styles.actionButton}>
-              <Ionicons name="pencil" size={16} color={themeConfig.colors.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={onDelete} style={styles.actionButton}>
-              <Ionicons name="trash" size={16} color={themeConfig.colors.error} />
-            </TouchableOpacity>
-          </View>
-        )}
+        
+        <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
+          <Ionicons 
+            name={statusConfig.icon} 
+            size={14} 
+            color={statusConfig.color} 
+          />
+        </View>
       </View>
 
-      {/* Progress */}
-      {renderProgressBar()}
-
-      {/* Amounts */}
-      <View style={styles.amountsContainer}>
-        <View style={styles.amountItem}>
-          <Text style={[styles.amountLabel, { color: themeConfig.colors.textSecondary }]}>
+      {/* Valores */}
+      <View style={styles.valuesContainer}>
+        <View style={styles.valueItem}>
+          <Text style={[styles.valueLabel, { color: themeConfig.colors.textSecondary }]}>
             Gasto
           </Text>
-          <Text style={[styles.amountValue, { color: getProgressBarColor() }]}>
+          <Text style={[styles.valueAmount, { color: themeConfig.colors.text }]}>
             {formatCurrency(budget.spent)}
           </Text>
         </View>
-
-        <View style={styles.amountItem}>
-          <Text style={[styles.amountLabel, { color: themeConfig.colors.textSecondary }]}>
+        
+        <View style={styles.valueItem}>
+          <Text style={[styles.valueLabel, { color: themeConfig.colors.textSecondary }]}>
             Orçamento
           </Text>
-          <Text style={[styles.amountValue, { color: themeConfig.colors.text }]}>
+          <Text style={[styles.valueAmount, { color: themeConfig.colors.text }]}>
             {formatCurrency(budget.amount)}
           </Text>
         </View>
-
-        <View style={styles.amountItem}>
-          <Text style={[styles.amountLabel, { color: themeConfig.colors.textSecondary }]}>
-            {budget.remaining >= 0 ? 'Restante' : 'Excesso'}
+        
+        <View style={styles.valueItem}>
+          <Text style={[styles.valueLabel, { color: themeConfig.colors.textSecondary }]}>
+            Restante
           </Text>
           <Text style={[
-            styles.amountValue, 
-            { color: budget.remaining >= 0 ? themeConfig.colors.success : themeConfig.colors.error }
+            styles.valueAmount, 
+            { color: remaining >= 0 ? themeConfig.colors.success : themeConfig.colors.error }
           ]}>
-            {formatCurrency(Math.abs(budget.remaining))}
+            {formatCurrency(remaining)}
           </Text>
         </View>
       </View>
 
-      {/* Status and Info */}
-      <View style={styles.statusContainer}>
-        <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
-          <Ionicons name={statusConfig.icon} size={14} color={statusConfig.color} />
-          <Text style={[styles.statusText, { color: statusConfig.color }]}>
-            {statusConfig.message}
-          </Text>
+      {/* Barra de Progresso */}
+      <View style={styles.progressContainer}>
+        <View style={[styles.progressBar, { backgroundColor: themeConfig.colors.surface }]}>
+          <View
+            style={[
+              styles.progressFill,
+              {
+                width: `${Math.min(spentPercentage, 100)}%`,
+                backgroundColor: getProgressBarColor(),
+              },
+            ]}
+          />
         </View>
-
-        <Text style={[styles.daysRemaining, { color: themeConfig.colors.textSecondary }]}>
-          {budget.daysRemaining} dias restantes
+        <Text style={[styles.progressText, { color: themeConfig.colors.textSecondary }]}>
+          {spentPercentage.toFixed(1)}%
         </Text>
       </View>
 
-      {/* Daily Budget Suggestion */}
-      {budget.daysRemaining > 0 && budget.remaining > 0 && (
-        <View style={[styles.suggestionContainer, { backgroundColor: themeConfig.colors.info + '10' }]}>
-          <Ionicons name="bulb" size={14} color={themeConfig.colors.info} />
-          <Text style={[styles.suggestionText, { color: themeConfig.colors.info }]}>
-            Pode gastar até {formatCurrency(budget.dailyBudget)} por dia
+      {/* Informações Adicionais */}
+      <View style={styles.infoContainer}>
+        <View style={styles.infoItem}>
+          <Ionicons 
+            name="calendar-outline" 
+            size={14} 
+            color={themeConfig.colors.textSecondary} 
+          />
+          <Text style={[styles.infoText, { color: themeConfig.colors.textSecondary }]}>
+            {daysRemaining > 0 
+              ? `${daysRemaining} dias restantes`
+              : 'Período finalizado'
+            }
           </Text>
+        </View>
+        
+        <View style={styles.infoItem}>
+          <Ionicons 
+            name="trending-down" 
+            size={14} 
+            color={themeConfig.colors.textSecondary} 
+          />
+          <Text style={[styles.infoText, { color: themeConfig.colors.textSecondary }]}>
+            {formatCurrency(dailyBudget)}/dia
+          </Text>
+        </View>
+      </View>
+
+      {/* Status Message */}
+      <View style={[styles.statusContainer, { backgroundColor: statusConfig.bgColor }]}>
+        <Text style={[styles.statusMessage, { color: statusConfig.color }]}>
+          {statusConfig.message}
+        </Text>
+      </View>
+
+      {/* Actions */}
+      {showActions && (onEdit || onDelete) && (
+        <View style={styles.actionsContainer}>
+          {onEdit && (
+            <TouchableOpacity 
+              style={[styles.actionButton, { backgroundColor: themeConfig.colors.primary + '20' }]}
+              onPress={onEdit}
+            >
+              <Ionicons name="pencil" size={16} color={themeConfig.colors.primary} />
+              <Text style={[styles.actionText, { color: themeConfig.colors.primary }]}>
+                Editar
+              </Text>
+            </TouchableOpacity>
+          )}
+          
+          {onDelete && (
+            <TouchableOpacity 
+              style={[styles.actionButton, { backgroundColor: themeConfig.colors.error + '20' }]}
+              onPress={onDelete}
+            >
+              <Ionicons name="trash" size={16} color={themeConfig.colors.error} />
+              <Text style={[styles.actionText, { color: themeConfig.colors.error }]}>
+                Excluir
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
-
-      {/* Period */}
-      <View style={styles.periodContainer}>
-        <Text style={[styles.periodText, { color: themeConfig.colors.textLight }]}>
-          {format(new Date(budget.startDate), 'dd/MM', { locale: ptBR })} - {format(new Date(budget.endDate), 'dd/MM/yyyy', { locale: ptBR })}
-        </Text>
-      </View>
     </TouchableOpacity>
   );
 }
@@ -216,127 +260,108 @@ const styles = StyleSheet.create({
   container: {
     padding: 16,
     borderRadius: 12,
-    marginBottom: 12,
     borderWidth: 1,
-    borderColor: 'transparent',
+    marginBottom: 12,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 16,
-  },
-  categoryInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  categoryIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  categoryEmoji: {
-    fontSize: 20,
+    marginBottom: 12,
   },
   titleContainer: {
     flex: 1,
   },
-  budgetName: {
+  title: {
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 2,
   },
-  categoryName: {
+  period: {
     fontSize: 12,
   },
-  actions: {
-    flexDirection: 'row',
-    gap: 8,
+  statusBadge: {
+    padding: 6,
+    borderRadius: 12,
   },
-  actionButton: {
-    padding: 8,
-    borderRadius: 6,
-  },
-  progressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    gap: 12,
-  },
-  progressBar: {
-    flex: 1,
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  progressText: {
-    fontSize: 12,
-    fontWeight: '600',
-    minWidth: 40,
-    textAlign: 'right',
-  },
-  amountsContainer: {
+  valuesContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 12,
   },
-  amountItem: {
+  valueItem: {
     alignItems: 'center',
-    flex: 1,
   },
-  amountLabel: {
-    fontSize: 11,
-    marginBottom: 4,
+  valueLabel: {
+    fontSize: 12,
+    marginBottom: 2,
   },
-  amountValue: {
+  valueAmount: {
     fontSize: 14,
     fontWeight: '600',
   },
-  statusContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  statusBadge: {
+  progressContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
+    marginBottom: 12,
+    gap: 8,
   },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '500',
+  progressBar: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
   },
-  daysRemaining: {
-    fontSize: 11,
+  progressFill: {
+    height: '100%',
+    borderRadius: 3,
   },
-  suggestionContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 8,
-    borderRadius: 8,
-    marginBottom: 8,
-    gap: 6,
-  },
-  suggestionText: {
+  progressText: {
     fontSize: 12,
     fontWeight: '500',
+    minWidth: 40,
+    textAlign: 'right',
   },
-  periodContainer: {
+  infoContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  infoItem: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
   },
-  periodText: {
-    fontSize: 10,
+  infoText: {
+    fontSize: 12,
+  },
+  statusContainer: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginBottom: 8,
+  },
+  statusMessage: {
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 6,
+    gap: 4,
+  },
+  actionText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
 });

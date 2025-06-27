@@ -1,13 +1,13 @@
-import { apiClient } from './client';
-import { ApiResponse, AvailableBudget, Budget, BudgetForm } from '../../types';
+import { apiClient } from './config'; // Usar config ao invés de client
+import { Budget, BudgetForm } from '../../types';
 
 export interface BudgetFilters {
   status?: 'active' | 'expired' | 'future';
   period?: 'weekly' | 'monthly' | 'quarterly' | 'yearly';
   includeInactive?: boolean;
+  includeCategory?: boolean;
 }
 
-// ✅ CORRIGIDO: Interface BudgetSummary sem aninhamento
 export interface BudgetSummary {
   totalBudget: number;
   totalSpent: number;
@@ -18,7 +18,6 @@ export interface BudgetSummary {
   budgetsNearLimit: number;
 }
 
-// Interface para resposta detalhada com dados extras
 export interface BudgetSummaryResponse {
   summary: BudgetSummary;
   activeBudgets: Budget[];
@@ -35,17 +34,20 @@ export interface BudgetAlert {
   isExceeded: boolean;
 }
 
-// ✅ CORRIGIDO: Interface BudgetFormData extendida para o serviço
-interface BudgetFormData extends BudgetForm {
+// Corrigir interface BudgetFormData
+export interface BudgetFormData {
+  name: string;
+  amount: number; // Mudou de string para number
+  categoryId: string;
+  period: 'weekly' | 'monthly' | 'quarterly' | 'yearly';
   startDate: Date;
   endDate: Date;
   alertThreshold: number;
   notes?: string;
-  color: string;
+  color?: string; // Tornar opcional
 }
 
-// ✅ NOVO: Interface para updates de budget
-interface BudgetUpdate {
+export interface BudgetUpdate {
   name?: string;
   amount?: number;
   categoryId?: string;
@@ -59,8 +61,24 @@ interface BudgetUpdate {
   isActive?: boolean;
 }
 
+// Interface para orçamentos disponíveis para transação
+export interface AvailableBudget {
+  _id: string;
+  name: string;
+  amount: number;
+  spent: number;
+  remaining: number;
+  spentPercentage: number;
+  category: {
+    _id: string;
+    name: string;
+    icon: string;
+    color: string;
+  };
+}
+
 export const budgetService = {
-  async getBudgets(filters: BudgetFilters = {}): Promise<ApiResponse<{ budgets: Budget[] }>> {
+  async getBudgets(filters: BudgetFilters = {}): Promise<{ data: { budgets: Budget[] } }> {
     const params = new URLSearchParams();
     
     Object.entries(filters).forEach(([key, value]) => {
@@ -69,32 +87,56 @@ export const budgetService = {
       }
     });
 
-    return apiClient.get(`/budgets?${params.toString()}`);
+    const response = await apiClient.get(`/budgets?${params.toString()}`);
+    
+    // Transformar dados para incluir propriedades calculadas
+    const budgets = response.budgets?.map((budget: any) => ({
+      ...budget,
+      spentPercentage: budget.amount > 0 ? (budget.spent / budget.amount) * 100 : 0,
+      remaining: budget.amount - budget.spent,
+      status: budget.status || calculateBudgetStatus(budget),
+      daysRemaining: calculateDaysRemaining(budget.endDate),
+      dailyBudget: calculateDailyBudget(budget),
+    })) || [];
+
+    return { data: { budgets } };
   },
 
-  async getBudget(id: string): Promise<ApiResponse<{
-    budget: Budget;
-    transactions: any[];
-    dailySpending: Record<string, number>;
-  }>> {
-    return apiClient.get(`/budgets/${id}`);
+  async getBudget(id: string): Promise<{ data: { budget: Budget; transactions: any[]; dailySpending: Record<string, number> } }> {
+    const response = await apiClient.get(`/budgets/${id}`);
+    
+    const budget = {
+      ...response.budget,
+      spentPercentage: response.budget.amount > 0 ? (response.budget.spent / response.budget.amount) * 100 : 0,
+      remaining: response.budget.amount - response.budget.spent,
+      status: response.budget.status || calculateBudgetStatus(response.budget),
+      daysRemaining: calculateDaysRemaining(response.budget.endDate),
+      dailyBudget: calculateDailyBudget(response.budget),
+    };
+
+    return { 
+      data: { 
+        budget, 
+        transactions: response.transactions || [],
+        dailySpending: response.dailySpending || {}
+      } 
+    };
   },
 
-  async createBudget(data: BudgetFormData): Promise<ApiResponse<{ budget: Budget }>> {
+  async createBudget(data: BudgetFormData): Promise<{ data: { budget: Budget } }> {
     const payload = {
       ...data,
-      amount: parseFloat(data.amount),
       startDate: data.startDate.toISOString(),
       endDate: data.endDate.toISOString(),
+      color: data.color || '#6366f1', // Valor padrão para cor
     };
     
     return apiClient.post('/budgets', payload);
   },
 
-  async updateBudget(id: string, data: Partial<BudgetFormData>): Promise<ApiResponse<{ budget: Budget }>> {
+  async updateBudget(id: string, data: Partial<BudgetFormData>): Promise<{ data: { budget: Budget } }> {
     const payload = {
       ...data,
-      ...(data.amount && { amount: parseFloat(data.amount) }),
       ...(data.startDate && { startDate: data.startDate.toISOString() }),
       ...(data.endDate && { endDate: data.endDate.toISOString() }),
     };
@@ -102,48 +144,35 @@ export const budgetService = {
     return apiClient.put(`/budgets/${id}`, payload);
   },
 
-  async deleteBudget(id: string): Promise<ApiResponse<null>> {
+  async deleteBudget(id: string): Promise<{ success: boolean }> {
     return apiClient.delete(`/budgets/${id}`);
   },
 
-  async toggleBudget(id: string): Promise<ApiResponse<{ budget: Budget }>> {
+  async toggleBudget(id: string): Promise<{ data: { budget: Budget } }> {
     return apiClient.post(`/budgets/${id}/toggle`);
   },
 
-  async renewBudget(id: string): Promise<ApiResponse<{ budget: Budget }>> {
+  async renewBudget(id: string): Promise<{ data: { budget: Budget } }> {
     return apiClient.post(`/budgets/${id}/renew`);
   },
 
-  // ✅ CORRIGIDO: Agora retorna BudgetSummary diretamente
-  async getBudgetSummary(): Promise<ApiResponse<BudgetSummary>> {
+  async getBudgetSummary(): Promise<{ data: BudgetSummary }> {
     return apiClient.get('/budgets/summary');
   },
 
-  async getBudgetAlerts(): Promise<ApiResponse<{ alerts: BudgetAlert[] }>> {
+  async getBudgetAlerts(): Promise<{ data: { alerts: BudgetAlert[] } }> {
     return apiClient.get('/budgets/alerts');
   },
 
-  async getBudgetsOfflineFirst(filters: BudgetFilters = {}): Promise<Budget[]> {
-    const cacheKey = `budgets_${JSON.stringify(filters)}`;
-    
-    return apiClient.offlineFirst(
-      cacheKey,
-      async () => {
-        const response = await this.getBudgets(filters);
-        return response.data?.budgets || [];
-      }
-    );
-  },
-
-  async getActiveBudgets(): Promise<ApiResponse<{ budgets: Budget[] }>> {
+  async getActiveBudgets(): Promise<{ data: { budgets: Budget[] } }> {
     return this.getBudgets({ status: 'active' });
   },
 
-  async getExpiredBudgets(): Promise<ApiResponse<{ budgets: Budget[] }>> {
+  async getExpiredBudgets(): Promise<{ data: { budgets: Budget[] } }> {
     return this.getBudgets({ status: 'expired' });
   },
 
-  async getBudgetsByPeriod(period: 'weekly' | 'monthly' | 'quarterly' | 'yearly'): Promise<ApiResponse<{ budgets: Budget[] }>> {
+  async getBudgetsByPeriod(period: 'weekly' | 'monthly' | 'quarterly' | 'yearly'): Promise<{ data: { budgets: Budget[] } }> {
     return this.getBudgets({ period });
   },
 
@@ -168,9 +197,7 @@ export const budgetService = {
       Math.round((budget.spent / budget.amount) * 100) : 0;
     const remaining = Math.max(0, budget.amount - budget.spent);
     const isExceeded = budget.spent > budget.amount;
-    // ✅ CORRIGIDO: Type casting para acessar alertSent
-    const budgetWithAlert = budget as any;
-    const shouldAlert = percentage >= (budget.alertThreshold || 80) && !budgetWithAlert.alertSent;
+    const shouldAlert = percentage >= (budget.alertThreshold || 80) && !budget.alertSent;
 
     return {
       percentage,
@@ -180,7 +207,7 @@ export const budgetService = {
     };
   },
 
-  async duplicateBudget(id: string): Promise<ApiResponse<{ budget: Budget }>> {
+  async duplicateBudget(id: string): Promise<{ data: { budget: Budget } }> {
     const { data } = await this.getBudget(id);
     
     if (!data?.budget) {
@@ -188,8 +215,6 @@ export const budgetService = {
     }
 
     const budget = data.budget;
-    // ✅ CORRIGIDO: Type casting para acessar propriedades extras
-    const budgetWithExtras = budget as any;
     
     const now = new Date();
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -197,14 +222,14 @@ export const budgetService = {
 
     return this.createBudget({
       name: `${budget.name} (cópia)`,
-      amount: budget.amount.toString(),
+      amount: budget.amount,
       categoryId: budget.categoryId,
       period: budget.period,
       startDate: nextMonth,
       endDate: endOfNextMonth,
       alertThreshold: budget.alertThreshold,
-      notes: budgetWithExtras.notes || '',
-      color: budgetWithExtras.color || '#6366f1',
+      notes: budget.notes || '',
+      color: budget.color || '#6366f1',
     });
   },
 
@@ -242,24 +267,15 @@ export const budgetService = {
     };
   },
 
-  async resetBudgetAlerts(id: string): Promise<ApiResponse<{ budget: Budget }>> {
-    const response = await this.getBudget(id);
-    
-    if (!response.data?.budget) {
-      throw new Error('Orçamento não encontrado');
-    }
-
-    // ✅ CORRIGIDO: Usando interface BudgetUpdate
+  async resetBudgetAlerts(id: string): Promise<{ data: { budget: Budget } }> {
     const updateData: BudgetUpdate = { alertSent: false };
     return apiClient.put(`/budgets/${id}`, updateData);
   },
 
-  // ✅ NOVO: Método para obter resumo detalhado (com dados extras)
-  async getBudgetSummaryDetailed(): Promise<ApiResponse<BudgetSummaryResponse>> {
+  async getBudgetSummaryDetailed(): Promise<{ data: BudgetSummaryResponse }> {
     return apiClient.get('/budgets/summary/detailed');
   },
 
-  // ✅ NOVO: Método para calcular resumo localmente
   calculateSummaryFromBudgets(budgets: Budget[]): BudgetSummary {
     const activeBudgets = budgets.filter(b => b.isActive);
     
@@ -269,10 +285,11 @@ export const budgetService = {
     const overallPercentage = totalBudget > 0 ? 
       Math.round((totalSpent / totalBudget) * 100) : 0;
     
-    const budgetsExceeded = activeBudgets.filter(b => b.isExceeded).length;
+    // Usar propriedades calculadas do Budget ao invés de isExceeded
+    const budgetsExceeded = activeBudgets.filter(b => b.status === 'exceeded').length;
     const budgetsNearLimit = activeBudgets.filter(b => {
       const threshold = b.alertThreshold || 80;
-      return b.spentPercentage >= threshold && !b.isExceeded;
+      return b.spentPercentage >= threshold && b.status !== 'exceeded';
     }).length;
 
     return {
@@ -286,7 +303,6 @@ export const budgetService = {
     };
   },
 
-  // ✅ CORRIGIDO: Método para validar orçamento
   async validateBudget(data: Partial<BudgetFormData>): Promise<{
     isValid: boolean;
     errors: string[];
@@ -297,7 +313,7 @@ export const budgetService = {
       errors.push('Nome é obrigatório');
     }
 
-    if (!data.amount || parseFloat(data.amount) <= 0) {
+    if (!data.amount || data.amount <= 0) {
       errors.push('Valor deve ser maior que zero');
     }
 
@@ -332,8 +348,7 @@ export const budgetService = {
     };
   },
 
-  // ✅ NOVO: Método para obter estatísticas de gastos por categoria
-  async getCategorySpendingStats(period: 'week' | 'month' | 'quarter' | 'year' = 'month'): Promise<ApiResponse<{
+  async getCategorySpendingStats(period: 'week' | 'month' | 'quarter' | 'year' = 'month'): Promise<{ data: {
     categories: Array<{
       categoryId: string;
       categoryName: string;
@@ -343,21 +358,16 @@ export const budgetService = {
       percentage: number;
       isExceeded: boolean;
     }>;
-  }>> {
+  } }> {
     return apiClient.get(`/budgets/stats/categories?period=${period}`);
   },
 
-  // ✅ NOVO: Método para exportar dados de orçamentos
   async exportBudgets(format: 'csv' | 'xlsx' | 'pdf' = 'csv'): Promise<Blob> {
-    const response = await apiClient.get(`/budgets/export?format=${format}`, {
-      responseType: 'blob',
-    });
-    
-    return response.data;
+    const response = await apiClient.get(`/budgets/export?format=${format}`);
+    return response;
   },
 
-  // 🔥 NOVO: Método para buscar orçamentos ativos para transações
-  async getActiveBudgetsForTransaction(type: 'income' | 'expense' = 'expense'): Promise<ApiResponse<{ budgets: AvailableBudget[] }>> {
+  async getActiveBudgetsForTransaction(type: 'income' | 'expense' = 'expense'): Promise<{ data: { budgets: AvailableBudget[] } }> {
     const params = new URLSearchParams();
     params.append('status', 'active');
     params.append('type', type);
@@ -366,8 +376,7 @@ export const budgetService = {
     return apiClient.get(`/budgets/available-for-transaction?${params.toString()}`);
   },
 
-  // 🔥 NOVO: Método para buscar orçamentos por categoria
-  async getBudgetsByCategory(categoryId: string, includeInactive: boolean = false): Promise<ApiResponse<{ budgets: AvailableBudget[] }>> {
+  async getBudgetsByCategory(categoryId: string, includeInactive: boolean = false): Promise<{ data: { budgets: AvailableBudget[] } }> {
     const params = new URLSearchParams();
     params.append('categoryId', categoryId);
     if (includeInactive) params.append('includeInactive', 'true');
@@ -375,15 +384,37 @@ export const budgetService = {
     return apiClient.get(`/budgets/by-category?${params.toString()}`);
   },
 
-  // 🔥 NOVO: Método para simular impacto da transação no orçamento
-  async simulateTransactionImpact(budgetId: string, amount: number): Promise<ApiResponse<{
+  async simulateTransactionImpact(budgetId: string, amount: number): Promise<{ data: {
     currentSpent: number;
     newSpent: number;
     remaining: number;
     newPercentage: number;
     wouldExceed: boolean;
     newStatus: 'safe' | 'warning' | 'critical' | 'exceeded';
-  }>> {
+  } }> {
     return apiClient.post(`/budgets/${budgetId}/simulate-impact`, { amount });
   },
 };
+
+// Funções auxiliares para cálculos
+function calculateBudgetStatus(budget: any): 'safe' | 'warning' | 'critical' | 'exceeded' {
+  const percentage = budget.amount > 0 ? (budget.spent / budget.amount) * 100 : 0;
+  
+  if (percentage >= 100) return 'exceeded';
+  if (percentage >= 80) return 'critical';
+  if (percentage >= 60) return 'warning';
+  return 'safe';
+}
+
+function calculateDaysRemaining(endDate: string): number {
+  const end = new Date(endDate);
+  const now = new Date();
+  const diffTime = end.getTime() - now.getTime();
+  return Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+}
+
+function calculateDailyBudget(budget: any): number {
+  const remaining = budget.amount - budget.spent;
+  const daysRemaining = calculateDaysRemaining(budget.endDate);
+  return remaining / Math.max(daysRemaining, 1);
+}

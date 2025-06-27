@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,117 +7,110 @@ import {
   TouchableOpacity,
   Alert,
   FlatList,
+  Modal,
+  TextInput,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useForm, Controller } from 'react-hook-form';
-import { yupResolver } from '@hookform/resolvers/yup';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { format, addDays, addWeeks, addMonths, addYears } from 'date-fns';
-import * as yup from 'yup';
+import { format, addDays, addWeeks, addMonths, addYears, startOfDay, endOfDay } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 import Header from '../../components/common/Header';
 import Button from '../../components/common/Button';
-import Input from '../../components/common/Input';
 import Card from '../../components/common/Card';
 import Loading from '../../components/common/Loading';
 import { useThemeStore } from '../../store/themeStore';
 import { getTheme } from '../../styles/theme';
 import { budgetService } from '../../services/api/budgets';
 import { categoryService } from '../../services/api/categories';
-import { formatInputCurrency, parseNumber } from '../../utils/formatters';
+import { formatCurrency } from '../../utils/formatters';
 import type { MainStackScreenProps } from '../../navigation/types';
 import type { Category } from '../../types';
 
 type Props = MainStackScreenProps<'EditBudget'>;
 
-interface BudgetForm {
+interface BudgetFormData {
   name: string;
   amount: string;
   categoryId: string;
-  period: 'weekly' | 'monthly' | 'quarterly' | 'yearly';
-  startDate: string;
-  endDate: string;
+  period: 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom';
+  startDate: Date;
+  endDate: Date;
   alertThreshold: string;
-  notes?: string;
-  color: string;
+  notes: string;
+  isActive: boolean;
+  autoRenew: boolean;
 }
 
-const budgetSchema = yup.object().shape({
-  name: yup.string().required('Nome obrigatório'),
-  amount: yup.string().required('Valor obrigatório'),
-  categoryId: yup.string().required('Categoria obrigatória'),
-  period: yup.string().required('Período obrigatório'),
-  startDate: yup.string().required('Data de início obrigatória'),
-  endDate: yup.string().required('Data de fim obrigatória'),
-  alertThreshold: yup.string().required('Limite de alerta obrigatório'),
-  notes: yup.string().optional(),
-  color: yup.string().required('Cor obrigatória'),
-});
-
 const periodOptions = [
-  { value: 'weekly', label: 'Semanal', icon: 'calendar-outline', duration: 7 },
-  { value: 'monthly', label: 'Mensal', icon: 'calendar-outline', duration: 30 },
-  { value: 'quarterly', label: 'Trimestral', icon: 'calendar-outline', duration: 90 },
-  { value: 'yearly', label: 'Anual', icon: 'calendar-outline', duration: 365 },
-];
-
-const colorOptions = [
-  '#3b82f6', '#ef4444', '#10b981', '#f59e0b',
-  '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16',
-  '#f97316', '#6366f1', '#14b8a6', '#f43f5e',
+  { value: 'weekly' as const, label: 'Semanal', icon: 'calendar-outline', duration: 7 },
+  { value: 'monthly' as const, label: 'Mensal', icon: 'calendar', duration: 30 },
+  { value: 'quarterly' as const, label: 'Trimestral', icon: 'calendar-sharp', duration: 90 },
+  { value: 'yearly' as const, label: 'Anual', icon: 'calendar-sharp', duration: 365 },
+  { value: 'custom' as const, label: 'Personalizado', icon: 'settings-outline', duration: 0 },
 ];
 
 export default function EditBudgetScreen({ navigation, route }: Props) {
   const { budgetId } = route.params;
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [selectedPeriod, setSelectedPeriod] = useState<string>('monthly');
-  const [selectedColor, setSelectedColor] = useState<string>(colorOptions[0]);
-  
   const { theme } = useThemeStore();
   const themeConfig = getTheme(theme);
   const queryClient = useQueryClient();
 
-  const {
-    control,
-    handleSubmit,
-    setValue,
-    watch,
-    reset,
-    formState: { errors, isValid, isDirty },
-  } = useForm<BudgetForm>({
-    resolver: yupResolver(budgetSchema) as any,
-    defaultValues: {
-      name: '',
-      amount: '',
-      categoryId: '',
-      period: 'monthly',
-      startDate: format(new Date(), 'yyyy-MM-dd'),
-      endDate: format(addMonths(new Date(), 1), 'yyyy-MM-dd'),
-      alertThreshold: '80',
-      notes: '',
-      color: colorOptions[0],
-    },
-    mode: 'onChange',
+  // Form state
+  const [formData, setFormData] = useState<BudgetFormData>({
+    name: '',
+    amount: '',
+    categoryId: '',
+    period: 'monthly',
+    startDate: new Date(),
+    endDate: addMonths(new Date(), 1),
+    alertThreshold: '80',
+    notes: '',
+    isActive: true,
+    autoRenew: false,
   });
 
+  // UI state
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [hasChanges, setHasChanges] = useState(false);
+  const [originalData, setOriginalData] = useState<BudgetFormData | null>(null);
+
   // Fetch budget details
-  const { data: budgetData, isLoading: budgetLoading } = useQuery({
+  const { data: budgetResponse, isLoading: budgetLoading } = useQuery({
     queryKey: ['budget', budgetId],
     queryFn: () => budgetService.getBudget(budgetId),
   });
 
   // Fetch categories
   const { data: categoriesResponse, isLoading: categoriesLoading } = useQuery({
-    queryKey: ['categories'],
+    queryKey: ['categories-expense'],
     queryFn: () => categoryService.getCategories({ type: 'expense' }),
+    staleTime: 5 * 60 * 1000,
   });
 
+  const budget = budgetResponse?.data?.budget;
   const categories = categoriesResponse?.data?.categories || [];
+  const selectedCategory = categories.find(cat => cat._id === formData.categoryId);
+
+  // Debug para categorias
+  useEffect(() => {
+    console.log('🔍 Categories Response:', categoriesResponse);
+    console.log('🔍 Categories Array:', categories);
+    console.log('🔍 Categories Loading:', categoriesLoading);
+  }, [categoriesResponse, categories, categoriesLoading]);
 
   // Update budget mutation
   const updateBudgetMutation = useMutation({
-    mutationFn: (data: any) => budgetService.updateBudget(budgetId, data),
+    mutationFn: (data: any) => {
+      console.log('🔄 Atualizando orçamento:', data);
+      return budgetService.updateBudget(budgetId, data);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
       queryClient.invalidateQueries({ queryKey: ['budget', budgetId] });
@@ -126,115 +119,231 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
       Alert.alert(
         'Sucesso!',
         'Orçamento atualizado com sucesso!',
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
-        ]
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     },
     onError: (error: any) => {
+      console.error('❌ Erro ao atualizar orçamento:', error);
       Alert.alert(
         'Erro',
-        error.response?.data?.message || 'Erro ao atualizar orçamento. Tente novamente.'
+        error.response?.data?.message || 'Erro ao atualizar orçamento.'
       );
     },
   });
 
   // Load budget data when available
   useEffect(() => {
-    if (budgetData?.data?.budget) {
-      const budget = budgetData.data.budget;
+    if (budget) {
+      console.log('💾 Carregando dados do orçamento:', budget);
       
-      setSelectedCategory(budget.categoryId);
-      setSelectedPeriod(budget.period);
-      setSelectedColor(budget.color);
+      // Garantir que as datas sejam objetos Date válidos
+      let startDate: Date;
+      let endDate: Date;
       
-      reset({
-        name: budget.name,
-        amount: budget.amount.toLocaleString('pt-BR', {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        }),
-        categoryId: budget.categoryId,
-        period: budget.period,
-        startDate: format(new Date(budget.startDate), 'yyyy-MM-dd'),
-        endDate: format(new Date(budget.endDate), 'yyyy-MM-dd'),
+      try {
+        startDate = budget.startDate ? new Date(budget.startDate) : new Date();
+        endDate = budget.endDate ? new Date(budget.endDate) : addMonths(new Date(), 1);
+        
+        // Verificar se as datas são válidas
+        if (isNaN(startDate.getTime())) {
+          startDate = new Date();
+        }
+        if (isNaN(endDate.getTime())) {
+          endDate = addMonths(new Date(), 1);
+        }
+      } catch (error) {
+        console.error('Erro ao processar datas:', error);
+        startDate = new Date();
+        endDate = addMonths(new Date(), 1);
+      }
+      
+      const budgetData: BudgetFormData = {
+        name: budget.name || '',
+        amount: (budget.amount || 0).toString(),
+        categoryId: budget.categoryId || '',
+        period: budget.period || 'monthly',
+        startDate,
+        endDate,
         alertThreshold: (budget.alertThreshold || 80).toString(),
         notes: budget.notes || '',
-        color: budget.color,
-      });
+        isActive: budget.isActive ?? true,
+        autoRenew: budget.autoRenew ?? false,
+      };
+      
+      console.log('📋 Form data definido:', budgetData);
+      setFormData(budgetData);
+      setOriginalData(budgetData);
     }
-  }, [budgetData, reset]);
+  }, [budget]);
 
-  const onSubmit = async (data: BudgetForm) => {
-    const budgetData = {
-      name: data.name,
-      amount: parseNumber(data.amount),
-      categoryId: selectedCategory,
-      period: selectedPeriod,
-      startDate: new Date(data.startDate),
-      endDate: new Date(data.endDate),
-      alertThreshold: parseInt(data.alertThreshold),
-      notes: data.notes || undefined,
-      color: selectedColor,
+  // Check for changes
+  useEffect(() => {
+    if (originalData) {
+      const changed = JSON.stringify(formData) !== JSON.stringify(originalData);
+      setHasChanges(changed);
+    }
+  }, [formData, originalData]);
+
+  // Auto-calculate end date when period changes
+  useEffect(() => {
+    if (formData.period !== 'custom') {
+      const start = startOfDay(formData.startDate);
+      let end: Date;
+      
+      switch (formData.period) {
+        case 'weekly':
+          end = endOfDay(addWeeks(start, 1));
+          break;
+        case 'monthly':
+          end = endOfDay(addMonths(start, 1));
+          break;
+        case 'quarterly':
+          end = endOfDay(addMonths(start, 3));
+          break;
+        case 'yearly':
+          end = endOfDay(addYears(start, 1));
+          break;
+        default:
+          end = formData.endDate;
+      }
+      
+      if (end.getTime() !== formData.endDate.getTime()) {
+        setFormData(prev => ({ ...prev, endDate: end }));
+      }
+    }
+  }, [formData.period, formData.startDate]);
+
+  // Validation
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {};
+
+    if (!formData.name.trim()) {
+      newErrors.name = 'Nome é obrigatório';
+    }
+
+    // Melhor validação do valor
+    const amountValue = formData.amount.replace(/[^\d,]/g, '').replace(',', '.');
+    const parsedAmount = parseFloat(amountValue);
+    
+    if (!formData.amount.trim() || isNaN(parsedAmount) || parsedAmount <= 0) {
+      newErrors.amount = 'Valor deve ser um número válido maior que zero';
+    }
+
+    if (!formData.categoryId) {
+      newErrors.categoryId = 'Categoria é obrigatória';
+    }
+
+    // Validar datas com verificação mais robusta
+    if (!formData.startDate) {
+      newErrors.startDate = 'Data inicial é obrigatória';
+    } else {
+      const startDate = formData.startDate instanceof Date ? formData.startDate : new Date(formData.startDate);
+      if (isNaN(startDate.getTime())) {
+        newErrors.startDate = 'Data inicial inválida';
+      }
+    }
+
+    if (!formData.endDate) {
+      newErrors.endDate = 'Data final é obrigatória';
+    } else {
+      const endDate = formData.endDate instanceof Date ? formData.endDate : new Date(formData.endDate);
+      if (isNaN(endDate.getTime())) {
+        newErrors.endDate = 'Data final inválida';
+      }
+    }
+
+    // Comparar datas apenas se ambas são válidas
+    if (formData.startDate && formData.endDate && !newErrors.startDate && !newErrors.endDate) {
+      const startDate = formData.startDate instanceof Date ? formData.startDate : new Date(formData.startDate);
+      const endDate = formData.endDate instanceof Date ? formData.endDate : new Date(formData.endDate);
+      
+      if (startDate >= endDate) {
+        newErrors.endDate = 'Data final deve ser posterior à data inicial';
+      }
+    }
+
+    const threshold = parseFloat(formData.alertThreshold);
+    if (isNaN(threshold) || threshold < 0 || threshold > 100) {
+      newErrors.alertThreshold = 'Limite deve ser entre 0 e 100';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  // Calculate progress and status
+  const budgetStats = useMemo(() => {
+    if (!budget) return null;
+
+    const spent = budget.spent || 0;
+    const amountValue = formData.amount.replace(/[^\d,]/g, '').replace(',', '.');
+    const amount = parseFloat(amountValue) || budget.amount;
+    const percentage = amount > 0 ? (spent / amount) * 100 : 0;
+    const remaining = amount - spent;
+    const threshold = parseFloat(formData.alertThreshold);
+
+    let status: 'safe' | 'warning' | 'critical' | 'exceeded' = 'safe';
+    if (percentage >= 100) status = 'exceeded';
+    else if (percentage >= threshold) status = 'critical';
+    else if (percentage >= threshold * 0.8) status = 'warning';
+
+    return {
+      spent,
+      amount,
+      percentage,
+      remaining,
+      status,
+      isOverBudget: spent > amount,
+    };
+  }, [budget, formData.amount, formData.alertThreshold]);
+
+  const handleSubmit = () => {
+    if (!validateForm()) return;
+
+    // Converter valor para número corretamente
+    const amountValue = formData.amount.replace(/[^\d,]/g, '').replace(',', '.');
+    const parsedAmount = parseFloat(amountValue);
+    
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      Alert.alert('Erro', 'Valor do orçamento deve ser maior que zero');
+      return;
+    }
+
+    // Validar datas - garantir que são objetos Date válidos
+    const startDate = formData.startDate instanceof Date ? formData.startDate : new Date(formData.startDate);
+    const endDate = formData.endDate instanceof Date ? formData.endDate : new Date(formData.endDate);
+    
+    if (!startDate || !endDate || isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      Alert.alert('Erro', 'Datas inválidas');
+      return;
+    }
+
+    const updateData = {
+      name: formData.name.trim(),
+      amount: parsedAmount,
+      categoryId: formData.categoryId,
+      period: formData.period === 'custom' ? 'monthly' : formData.period,
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      alertThreshold: parseFloat(formData.alertThreshold),
+      notes: formData.notes.trim() || undefined,
+      isActive: formData.isActive,
     };
 
-    updateBudgetMutation.mutate(budgetData);
-  };
-
-  const handleCategorySelect = (categoryId: string) => {
-    setSelectedCategory(categoryId);
-    setValue('categoryId', categoryId, { shouldValidate: true });
-  };
-
-  const handlePeriodSelect = (period: string) => {
-    setSelectedPeriod(period);
-    setValue('period', period as any, { shouldValidate: true });
+    console.log('📤 Dados enviados:', updateData);
+    console.log('📅 Start Date Object:', startDate);
+    console.log('📅 End Date Object:', endDate);
     
-    // Auto-calculate end date based on period
-    const startDate = new Date(watch('startDate'));
-    let endDate: Date;
-    
-    switch (period) {
-      case 'weekly':
-        endDate = addWeeks(startDate, 1);
-        break;
-      case 'quarterly':
-        endDate = addMonths(startDate, 3);
-        break;
-      case 'yearly':
-        endDate = addYears(startDate, 1);
-        break;
-      default: // monthly
-        endDate = addMonths(startDate, 1);
-        break;
-    }
-    
-    setValue('endDate', format(endDate, 'yyyy-MM-dd'));
-  };
-
-  const handleColorSelect = (color: string) => {
-    setSelectedColor(color);
-    setValue('color', color, { shouldValidate: true });
-  };
-
-  const handleAmountChange = (value: string) => {
-    const formatted = formatInputCurrency(value);
-    setValue('amount', formatted, { shouldValidate: true });
+    updateBudgetMutation.mutate(updateData);
   };
 
   const handleCancel = () => {
-    if (isDirty) {
+    if (hasChanges) {
       Alert.alert(
         'Descartar Alterações',
         'Você tem alterações não salvas. Deseja realmente sair?',
         [
-          {
-            text: 'Cancelar',
-            style: 'cancel',
-          },
+          { text: 'Continuar Editando', style: 'cancel' },
           {
             text: 'Descartar',
             style: 'destructive',
@@ -247,125 +356,122 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
     }
   };
 
-  const renderCategoryItem = ({ item }: { item: Category }) => {
-    const isSelected = selectedCategory === item._id;
+  const handleDuplicate = () => {
+    Alert.alert(
+      'Duplicar Orçamento',
+      'Deseja criar uma cópia deste orçamento?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Duplicar',
+          onPress: () => {
+            // Navegar para criação com dados pré-preenchidos
+            navigation.navigate('AddBudget', { 
+              categoryId: formData.categoryId
+            });
+          },
+        },
+      ]
+    );
+  };
+
+  const toggleBudgetStatus = () => {
+    const newStatus = !formData.isActive;
+    setFormData(prev => ({ ...prev, isActive: newStatus }));
     
-    return (
-      <TouchableOpacity
-        style={[
-          styles.categoryItem,
-          {
-            backgroundColor: isSelected 
-              ? themeConfig.colors.primary + '20' 
-              : themeConfig.colors.card,
-            borderColor: isSelected 
-              ? themeConfig.colors.primary 
-              : themeConfig.colors.border,
-          }
-        ]}
-        onPress={() => handleCategorySelect(item._id)}
-      >
-        <View style={[styles.categoryIcon, { backgroundColor: item.color + '20' }]}>
-          <Ionicons name={item.icon as any} size={20} color={item.color} />
-        </View>
-        <Text style={[
-          styles.categoryName, 
-          { 
-            color: isSelected 
-              ? themeConfig.colors.primary 
-              : themeConfig.colors.text 
-          }
-        ]}>
-          {item.name}
+    Alert.alert(
+      newStatus ? 'Ativar Orçamento' : 'Pausar Orçamento',
+      newStatus 
+        ? 'O orçamento será reativado e voltará a rastrear gastos.'
+        : 'O orçamento será pausado e não rastreará novos gastos.',
+      [
+        { 
+          text: 'Cancelar', 
+          onPress: () => setFormData(prev => ({ ...prev, isActive: !newStatus })),
+          style: 'cancel'
+        },
+        { text: 'Confirmar' },
+      ]
+    );
+  };
+
+  const renderCategoryItem = ({ item: category }: { item: Category }) => (
+    <TouchableOpacity
+      style={[
+        styles.categoryItem,
+        {
+          backgroundColor: themeConfig.colors.surface,
+          borderColor: formData.categoryId === category._id 
+            ? themeConfig.colors.primary 
+            : themeConfig.colors.border,
+        },
+      ]}
+      onPress={() => {
+        setFormData(prev => ({ ...prev, categoryId: category._id }));
+        setShowCategoryModal(false);
+      }}
+    >
+      <View style={[styles.categoryIcon, { backgroundColor: category.color + '20' }]}>
+        <Ionicons name={category.icon as any} size={24} color={category.color} />
+      </View>
+      <View style={styles.categoryInfo}>
+        <Text style={[styles.categoryName, { color: themeConfig.colors.text }]}>
+          {category.name}
         </Text>
-        {isSelected && (
-          <Ionicons 
-            name="checkmark-circle" 
-            size={20} 
-            color={themeConfig.colors.primary} 
-          />
+        {category.isDefault && (
+          <Text style={[styles.categoryType, { color: themeConfig.colors.textSecondary }]}>
+            Padrão
+          </Text>
         )}
-      </TouchableOpacity>
-    );
-  };
+      </View>
+      {formData.categoryId === category._id && (
+        <Ionicons name="checkmark-circle" size={24} color={themeConfig.colors.primary} />
+      )}
+    </TouchableOpacity>
+  );
 
-  const renderPeriodItem = (item: typeof periodOptions[0]) => {
-    const isSelected = selectedPeriod === item.value;
-    
-    return (
-      <TouchableOpacity
-        key={item.value}
-        style={[
-          styles.periodItem,
-          {
-            backgroundColor: isSelected 
-              ? themeConfig.colors.primary + '20' 
-              : themeConfig.colors.card,
-            borderColor: isSelected 
-              ? themeConfig.colors.primary 
-              : themeConfig.colors.border,
-          }
-        ]}
-        onPress={() => handlePeriodSelect(item.value)}
-      >
-        <Ionicons 
-          name={item.icon as any} 
-          size={20} 
-          color={isSelected ? themeConfig.colors.primary : themeConfig.colors.textSecondary} 
-        />
-        <Text style={[
-          styles.periodName, 
-          { 
-            color: isSelected 
-              ? themeConfig.colors.primary 
-              : themeConfig.colors.text 
-          }
-        ]}>
-          {item.label}
-        </Text>
-        {isSelected && (
-          <Ionicons 
-            name="checkmark-circle" 
-            size={16} 
-            color={themeConfig.colors.primary} 
-          />
-        )}
-      </TouchableOpacity>
-    );
-  };
+  const renderPeriodOption = (option: typeof periodOptions[number]) => (
+    <TouchableOpacity
+      key={option.value}
+      style={[
+        styles.periodOption,
+        {
+          backgroundColor: formData.period === option.value 
+            ? themeConfig.colors.primary + '20'
+            : themeConfig.colors.surface,
+          borderColor: formData.period === option.value 
+            ? themeConfig.colors.primary
+            : themeConfig.colors.border,
+        },
+      ]}
+      onPress={() => setFormData(prev => ({ ...prev, period: option.value }))}
+    >
+      <Ionicons 
+        name={option.icon as any} 
+        size={20} 
+        color={formData.period === option.value 
+          ? themeConfig.colors.primary 
+          : themeConfig.colors.textSecondary
+        } 
+      />
+      <Text style={[
+        styles.periodOptionText,
+        { 
+          color: formData.period === option.value 
+            ? themeConfig.colors.primary 
+            : themeConfig.colors.text 
+        }
+      ]}>
+        {option.label}
+      </Text>
+    </TouchableOpacity>
+  );
 
-  const renderColorItem = (color: string, index: number) => {
-    const isSelected = selectedColor === color;
-    
-    return (
-      <TouchableOpacity
-        key={index}
-        style={[
-          styles.colorItem,
-          { 
-            backgroundColor: color,
-            borderColor: isSelected ? themeConfig.colors.text : 'transparent',
-            borderWidth: isSelected ? 3 : 0,
-          }
-        ]}
-        onPress={() => handleColorSelect(color)}
-      >
-        {isSelected && (
-          <Ionicons 
-            name="checkmark" 
-            size={16} 
-            color="#ffffff" 
-          />
-        )}
-      </TouchableOpacity>
-    );
-  };
-
-  if (budgetLoading) {
+  if (budgetLoading || categoriesLoading) {
     return <Loading />;
   }
 
-  if (!budgetData?.data?.budget) {
+  if (!budget) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: themeConfig.colors.background }]}>
         <Header title="Editar Orçamento" showBackButton onBackPress={() => navigation.goBack()} />
@@ -391,274 +497,416 @@ export default function EditBudgetScreen({ navigation, route }: Props) {
     <SafeAreaView style={[styles.container, { backgroundColor: themeConfig.colors.background }]}>
       <Header 
         title="Editar Orçamento" 
-        showBackButton 
-        onBackPress={handleCancel}
+        leftElement={
+          <TouchableOpacity onPress={handleCancel}>
+            <Ionicons name="arrow-back" size={24} color={themeConfig.colors.text} />
+          </TouchableOpacity>
+        }
+        rightElement={
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={handleDuplicate} style={styles.headerButton}>
+              <Ionicons name="copy-outline" size={22} color={themeConfig.colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={toggleBudgetStatus} style={styles.headerButton}>
+              <Ionicons 
+                name={formData.isActive ? "pause-circle-outline" : "play-circle-outline"} 
+                size={22} 
+                color={formData.isActive ? themeConfig.colors.warning : themeConfig.colors.success} 
+              />
+            </TouchableOpacity>
+          </View>
+        }
       />
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Budget Details */}
-        <Card variant="elevated" style={styles.detailsCard}>
-          <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-            Informações do Orçamento
-          </Text>
-
-          <Controller
-            name="name"
-            control={control}
-            render={({ field: { onChange, onBlur, value } }) => (
-              <Input
-                label="Nome do Orçamento"
-                placeholder="Ex: Alimentação, Transporte..."
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-                error={errors.name?.message}
-                leftIcon={
-                  <Ionicons 
-                    name="pricetag-outline" 
-                    size={20} 
-                    color={themeConfig.colors.textSecondary} 
-                  />
-                }
-              />
-            )}
-          />
-
-          <Controller
-            name="amount"
-            control={control}
-            render={({ field: { onBlur, value } }) => (
-              <Input
-                label="Valor do Orçamento"
-                placeholder="R$ 0,00"
-                value={value}
-                onChangeText={handleAmountChange}
-                onBlur={onBlur}
-                error={errors.amount?.message}
-                keyboardType="numeric"
-                leftIcon={
-                  <Ionicons 
-                    name="cash-outline" 
-                    size={20} 
-                    color={themeConfig.colors.textSecondary} 
-                  />
-                }
-              />
-            )}
-          />
-
-          <Controller
-            name="notes"
-            control={control}
-            render={({ field: { onChange, onBlur, value } }) => (
-              <Input
-                label="Observações (Opcional)"
-                placeholder="Adicione detalhes sobre este orçamento..."
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-                multiline
-                numberOfLines={3}
-                leftIcon={
-                  <Ionicons 
-                    name="document-text-outline" 
-                    size={20} 
-                    color={themeConfig.colors.textSecondary} 
-                  />
-                }
-              />
-            )}
-          />
-        </Card>
-
-        {/* Category Selection */}
-        <Card variant="elevated" style={styles.categoryCard}>
-          <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-            Categoria
-          </Text>
-          
-          {categoriesLoading ? (
-            <View style={styles.loadingContainer}>
-              <Text style={[styles.loadingText, { color: themeConfig.colors.textSecondary }]}>
-                Carregando categorias...
-              </Text>
-            </View>
-          ) : categories.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="folder-outline" size={48} color={themeConfig.colors.textLight} />
-              <Text style={[styles.emptyStateText, { color: themeConfig.colors.textSecondary }]}>
-                Nenhuma categoria de despesa encontrada
-              </Text>
-            </View>
-          ) : (
-            <FlatList
-              data={categories}
-              keyExtractor={(item) => item._id}
-              renderItem={renderCategoryItem}
-              scrollEnabled={false}
-              ItemSeparatorComponent={() => <View style={styles.separator} />}
-            />
-          )}
-        </Card>
-
-        {/* Period Selection */}
-        <Card variant="elevated" style={styles.periodCard}>
-          <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-            Período do Orçamento
-          </Text>
-          
-          <View style={styles.periodGrid}>
-            {periodOptions.map(renderPeriodItem)}
-          </View>
-        </Card>
-
-        {/* Date Range */}
-        <Card variant="elevated" style={styles.dateCard}>
-          <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-            Período de Vigência
-          </Text>
-
-          <View style={styles.dateRow}>
-            <Controller
-              name="startDate"
-              control={control}
-              render={({ field: { onChange, onBlur, value } }) => (
-                <View style={styles.dateInput}>
-                  <Input
-                    label="Data de Início"
-                    placeholder="AAAA-MM-DD"
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    error={errors.startDate?.message}
-                    leftIcon={
-                      <Ionicons 
-                        name="play" 
-                        size={20} 
-                        color={themeConfig.colors.textSecondary} 
-                      />
-                    }
-                  />
-                </View>
-              )}
-            />
-
-            <Controller
-              name="endDate"
-              control={control}
-              render={({ field: { onChange, onBlur, value } }) => (
-                <View style={styles.dateInput}>
-                  <Input
-                    label="Data de Fim"
-                    placeholder="AAAA-MM-DD"
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    error={errors.endDate?.message}
-                    leftIcon={
-                      <Ionicons 
-                        name="stop" 
-                        size={20} 
-                        color={themeConfig.colors.textSecondary} 
-                      />
-                    }
-                  />
-                </View>
-              )}
-            />
-          </View>
-        </Card>
-
-        {/* Settings */}
-        <Card variant="elevated" style={styles.settingsCard}>
-          <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-            Configurações
-          </Text>
-
-          <Controller
-            name="alertThreshold"
-            control={control}
-            render={({ field: { onChange, onBlur, value } }) => (
-              <Input
-                label="Limite de Alerta (%)"
-                placeholder="80"
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-                error={errors.alertThreshold?.message}
-                keyboardType="numeric"
-                leftIcon={
-                  <Ionicons 
-                    name="warning-outline" 
-                    size={20} 
-                    color={themeConfig.colors.textSecondary} 
-                  />
-                }
-              />
-            )}
-          />
-
-          <View style={styles.colorSection}>
-            <Text style={[styles.colorLabel, { color: themeConfig.colors.text }]}>
-              Cor do Orçamento
-            </Text>
-            <View style={styles.colorsGrid}>
-              {colorOptions.map(renderColorItem)}
-            </View>
-          </View>
-        </Card>
-
-        {/* Preview */}
-        {watch('amount') && (
-          <Card variant="elevated" style={styles.previewCard}>
-            <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
-              Prévia do Orçamento
-            </Text>
-            
-            <View style={styles.previewContent}>
-              <View style={styles.previewHeader}>
-                <View style={[styles.previewColor, { backgroundColor: selectedColor }]} />
-                <Text style={[styles.previewName, { color: themeConfig.colors.text }]}>
-                  {watch('name') || 'Nome do Orçamento'}
+        {/* Status Card */}
+        {budgetStats && (
+          <Card style={[styles.statusCard, { 
+            borderLeftColor: formData.isActive ? themeConfig.colors.primary : themeConfig.colors.textSecondary 
+          }]}>
+            <View style={styles.statusHeader}>
+              <View style={styles.statusInfo}>
+                <Text style={[styles.statusTitle, { color: themeConfig.colors.text }]}>
+                  Status do Orçamento
+                </Text>
+                <Text style={[
+                  styles.statusBadge,
+                  {
+                    color: formData.isActive ? themeConfig.colors.primary : themeConfig.colors.textSecondary,
+                    backgroundColor: formData.isActive 
+                      ? themeConfig.colors.primary + '20' 
+                      : themeConfig.colors.textSecondary + '20'
+                  }
+                ]}>
+                  {formData.isActive ? 'Ativo' : 'Pausado'}
                 </Text>
               </View>
               
-              <View style={styles.previewAmounts}>
-                <Text style={[styles.previewAmount, { color: themeConfig.colors.primary }]}>
-                  R$ {parseNumber(watch('amount')).toLocaleString('pt-BR', { 
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2 
-                  })}
+              <View style={styles.progressContainer}>
+                <Text style={[styles.progressText, { color: themeConfig.colors.text }]}>
+                  {formatCurrency(budgetStats.spent)} de {formatCurrency(budgetStats.amount)}
                 </Text>
-                <Text style={[styles.previewPeriod, { color: themeConfig.colors.textSecondary }]}>
-                  {periodOptions.find(p => p.value === selectedPeriod)?.label}
+                <View style={[styles.progressBar, { backgroundColor: themeConfig.colors.border }]}>
+                  <View style={[
+                    styles.progressFill,
+                    {
+                      width: `${Math.min(budgetStats.percentage, 100)}%`,
+                      backgroundColor: budgetStats.status === 'exceeded' 
+                        ? themeConfig.colors.error
+                        : budgetStats.status === 'critical'
+                        ? themeConfig.colors.warning
+                        : themeConfig.colors.success
+                    }
+                  ]} />
+                </View>
+                <Text style={[styles.progressPercentage, { color: themeConfig.colors.textSecondary }]}>
+                  {budgetStats.percentage.toFixed(1)}% utilizado
                 </Text>
               </View>
             </View>
+
+            {hasChanges && (
+              <View style={[styles.changesWarning, { backgroundColor: themeConfig.colors.warning + '20' }]}>
+                <Ionicons name="information-circle" size={16} color={themeConfig.colors.warning} />
+                <Text style={[styles.changesText, { color: themeConfig.colors.warning }]}>
+                  Você tem alterações não salvas
+                </Text>
+              </View>
+            )}
           </Card>
         )}
 
-        {/* Action Buttons */}
-        <View style={styles.actionsContainer}>
-          <Button
-            title="Cancelar"
-            variant="outline"
-            onPress={handleCancel}
-            style={styles.cancelButton}
-          />
-          
-          <Button
-            title="Salvar Alterações"
-            onPress={handleSubmit(onSubmit) as any}
-            loading={updateBudgetMutation.isPending}
-            disabled={!isValid || !isDirty || updateBudgetMutation.isPending}
-            gradient
-            style={styles.saveButton}
-          />
-        </View>
+        {/* Basic Information */}
+        <Card style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
+            📝 Informações Básicas
+          </Text>
 
-        <View style={styles.bottomSpacer} />
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, { color: themeConfig.colors.text }]}>
+              Nome do Orçamento *
+            </Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: themeConfig.colors.surface,
+                  borderColor: errors.name ? themeConfig.colors.error : themeConfig.colors.border,
+                  color: themeConfig.colors.text,
+                },
+              ]}
+              value={formData.name}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, name: text }))}
+              placeholder="Ex: Alimentação Janeiro"
+              placeholderTextColor={themeConfig.colors.textSecondary}
+            />
+            {errors.name && (
+              <Text style={[styles.errorText, { color: themeConfig.colors.error }]}>
+                {errors.name}
+              </Text>
+            )}
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, { color: themeConfig.colors.text }]}>
+              Valor do Orçamento *
+            </Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: themeConfig.colors.surface,
+                  borderColor: errors.amount ? themeConfig.colors.error : themeConfig.colors.border,
+                  color: themeConfig.colors.text,
+                },
+              ]}
+              value={formData.amount}
+              onChangeText={(text) => {
+                // Permitir apenas números e vírgula
+                const cleanText = text.replace(/[^\d,]/g, '');
+                setFormData(prev => ({ ...prev, amount: cleanText }));
+              }}
+              placeholder="0,00"
+              placeholderTextColor={themeConfig.colors.textSecondary}
+              keyboardType="numeric"
+            />
+            {errors.amount && (
+              <Text style={[styles.errorText, { color: themeConfig.colors.error }]}>
+                {errors.amount}
+              </Text>
+            )}
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, { color: themeConfig.colors.text }]}>
+              Categoria *
+            </Text>
+            <TouchableOpacity
+              style={[
+                styles.input,
+                styles.categorySelector,
+                {
+                  backgroundColor: themeConfig.colors.surface,
+                  borderColor: errors.categoryId ? themeConfig.colors.error : themeConfig.colors.border,
+                },
+              ]}
+              onPress={() => setShowCategoryModal(true)}
+            >
+              {selectedCategory ? (
+                <View style={styles.selectedCategory}>
+                  <View style={[styles.categoryIconSmall, { backgroundColor: selectedCategory.color + '20' }]}>
+                    <Ionicons name={selectedCategory.icon as any} size={16} color={selectedCategory.color} />
+                  </View>
+                  <Text style={[styles.selectedCategoryText, { color: themeConfig.colors.text }]}>
+                    {selectedCategory.name}
+                  </Text>
+                </View>
+              ) : (
+                <Text style={[styles.placeholderText, { color: themeConfig.colors.textSecondary }]}>
+                  Selecione uma categoria
+                </Text>
+              )}
+              <Ionicons name="chevron-down" size={20} color={themeConfig.colors.textSecondary} />
+            </TouchableOpacity>
+            {errors.categoryId && (
+              <Text style={[styles.errorText, { color: themeConfig.colors.error }]}>
+                {errors.categoryId}
+              </Text>
+            )}
+          </View>
+        </Card>
+
+        {/* Period */}
+        <Card style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
+            📅 Período do Orçamento
+          </Text>
+
+          <View style={styles.periodGrid}>
+            {periodOptions.map(renderPeriodOption)}
+          </View>
+
+          <View style={styles.dateRow}>
+            <View style={styles.dateInputGroup}>
+              <Text style={[styles.label, { color: themeConfig.colors.text }]}>
+                Data Inicial
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.dateInput,
+                  {
+                    backgroundColor: themeConfig.colors.surface,
+                    borderColor: themeConfig.colors.border,
+                  },
+                ]}
+                onPress={() => setShowStartDatePicker(true)}
+              >
+                <Ionicons name="calendar-outline" size={20} color={themeConfig.colors.primary} />
+                <Text style={[styles.dateText, { color: themeConfig.colors.text }]}>
+                  {format(formData.startDate, 'dd/MM/yyyy', { locale: ptBR })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.dateInputGroup}>
+              <Text style={[styles.label, { color: themeConfig.colors.text }]}>
+                Data Final
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.dateInput,
+                  {
+                    backgroundColor: formData.period === 'custom' 
+                      ? themeConfig.colors.surface 
+                      : themeConfig.colors.surface + '80',
+                    borderColor: errors.endDate ? themeConfig.colors.error : themeConfig.colors.border,
+                  },
+                ]}
+                onPress={() => formData.period === 'custom' && setShowEndDatePicker(true)}
+                disabled={formData.period !== 'custom'}
+              >
+                <Ionicons 
+                  name="calendar-outline" 
+                  size={20} 
+                  color={formData.period === 'custom' 
+                    ? themeConfig.colors.primary 
+                    : themeConfig.colors.textSecondary
+                  } 
+                />
+                <Text style={[
+                  styles.dateText, 
+                  { 
+                    color: formData.period === 'custom' 
+                      ? themeConfig.colors.text 
+                      : themeConfig.colors.textSecondary 
+                  }
+                ]}>
+                  {format(formData.endDate, 'dd/MM/yyyy', { locale: ptBR })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {errors.endDate && (
+            <Text style={[styles.errorText, { color: themeConfig.colors.error }]}>
+              {errors.endDate}
+            </Text>
+          )}
+        </Card>
+
+        {/* Advanced Settings */}
+        <Card style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: themeConfig.colors.text }]}>
+            ⚙️ Configurações Avançadas
+          </Text>
+
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, { color: themeConfig.colors.text }]}>
+              Limite de Alerta (%)
+            </Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: themeConfig.colors.surface,
+                  borderColor: errors.alertThreshold ? themeConfig.colors.error : themeConfig.colors.border,
+                  color: themeConfig.colors.text,
+                },
+              ]}
+              value={formData.alertThreshold}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, alertThreshold: text }))}
+              placeholder="80"
+              placeholderTextColor={themeConfig.colors.textSecondary}
+              keyboardType="numeric"
+            />
+            <Text style={[styles.helperText, { color: themeConfig.colors.textSecondary }]}>
+              Receba alertas quando atingir este percentual do orçamento
+            </Text>
+            {errors.alertThreshold && (
+              <Text style={[styles.errorText, { color: themeConfig.colors.error }]}>
+                {errors.alertThreshold}
+              </Text>
+            )}
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, { color: themeConfig.colors.text }]}>
+              Observações (Opcional)
+            </Text>
+            <TextInput
+              style={[
+                styles.input,
+                styles.textArea,
+                {
+                  backgroundColor: themeConfig.colors.surface,
+                  borderColor: themeConfig.colors.border,
+                  color: themeConfig.colors.text,
+                },
+              ]}
+              value={formData.notes}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, notes: text }))}
+              placeholder="Adicione observações sobre este orçamento..."
+              placeholderTextColor={themeConfig.colors.textSecondary}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+          </View>
+
+          <View style={styles.toggleRow}>
+            <View>
+              <Text style={[styles.toggleLabel, { color: themeConfig.colors.text }]}>
+                Renovação Automática
+              </Text>
+              <Text style={[styles.toggleDescription, { color: themeConfig.colors.textSecondary }]}>
+                Criar novo orçamento automaticamente quando este expirar
+              </Text>
+            </View>
+            <Switch
+              value={formData.autoRenew}
+              onValueChange={(value) => setFormData(prev => ({ ...prev, autoRenew: value }))}
+              trackColor={{ 
+                false: themeConfig.colors.border, 
+                true: themeConfig.colors.primary + '60' 
+              }}
+              thumbColor={formData.autoRenew ? themeConfig.colors.primary : themeConfig.colors.surface}
+            />
+          </View>
+        </Card>
       </ScrollView>
+
+      {/* Action Buttons */}
+      <View style={[styles.footer, { backgroundColor: themeConfig.colors.background }]}>
+        <Button
+          title="Cancelar"
+          variant="outline"
+          onPress={handleCancel}
+          style={styles.footerButton}
+        />
+        <Button
+          title="Salvar Alterações"
+          onPress={handleSubmit}
+          loading={updateBudgetMutation.isPending}
+          disabled={!hasChanges || updateBudgetMutation.isPending}
+          style={styles.footerButton}
+        />
+      </View>
+
+      {/* Category Modal */}
+      <Modal
+        visible={showCategoryModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <SafeAreaView style={[styles.modalContainer, { backgroundColor: themeConfig.colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: themeConfig.colors.border }]}>
+            <Text style={[styles.modalTitle, { color: themeConfig.colors.text }]}>
+              Selecionar Categoria
+            </Text>
+            <TouchableOpacity onPress={() => setShowCategoryModal(false)}>
+              <Ionicons name="close" size={24} color={themeConfig.colors.text} />
+            </TouchableOpacity>
+          </View>
+          
+          <FlatList
+            data={categories}
+            renderItem={renderCategoryItem}
+            keyExtractor={(item) => item._id}
+            contentContainerStyle={styles.categoriesList}
+            ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+          />
+        </SafeAreaView>
+      </Modal>
+
+      {/* Date Pickers */}
+      {showStartDatePicker && (
+        <DateTimePicker
+          value={formData.startDate}
+          mode="date"
+          display="default"
+          onChange={(event, selectedDate) => {
+            setShowStartDatePicker(false);
+            if (selectedDate) {
+              setFormData(prev => ({ ...prev, startDate: selectedDate }));
+            }
+          }}
+        />
+      )}
+
+      {showEndDatePicker && (
+        <DateTimePicker
+          value={formData.endDate}
+          mode="date"
+          display="default"
+          minimumDate={formData.startDate}
+          onChange={(event, selectedDate) => {
+            setShowEndDatePicker(false);
+            if (selectedDate) {
+              setFormData(prev => ({ ...prev, endDate: selectedDate }));
+            }
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -670,6 +918,15 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 16,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerButton: {
+    padding: 8,
+    borderRadius: 8,
   },
   errorContainer: {
     flex: 1,
@@ -693,7 +950,63 @@ const styles = StyleSheet.create({
   errorButton: {
     minWidth: 120,
   },
-  detailsCard: {
+  statusCard: {
+    marginBottom: 16,
+    borderLeftWidth: 4,
+  },
+  statusHeader: {
+    gap: 12,
+  },
+  statusInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  statusTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  statusBadge: {
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  progressContainer: {
+    gap: 8,
+  },
+  progressText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  progressBar: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  progressPercentage: {
+    fontSize: 12,
+    textAlign: 'right',
+  },
+  changesWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 8,
+  },
+  changesText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  section: {
     marginBottom: 16,
   },
   sectionTitle: {
@@ -701,24 +1014,134 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 16,
   },
-  categoryCard: {
+  inputGroup: {
     marginBottom: 16,
   },
-  loadingContainer: {
-    alignItems: 'center',
-    padding: 32,
+  label: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
   },
-  loadingText: {
+  input: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+  },
+  textArea: {
+    minHeight: 80,
+  },
+  errorText: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  helperText: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  categorySelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  selectedCategory: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  categoryIconSmall: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  selectedCategoryText: {
+    fontSize: 16,
+  },
+  placeholderText: {
+    fontSize: 16,
+  },
+  periodGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 16,
+  },
+  periodOption: {
+    flex: 1,
+    minWidth: '45%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 8,
+  },
+  periodOptionText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  dateRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  dateInputGroup: {
+    flex: 1,
+  },
+  dateInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  dateText: {
+    fontSize: 16,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  toggleLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  toggleDescription: {
     fontSize: 14,
   },
-  emptyState: {
-    alignItems: 'center',
-    padding: 32,
+  footer: {
+    flexDirection: 'row',
+    padding: 16,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
   },
-  emptyStateText: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 8,
+  footerButton: {
+    flex: 1,
+  },
+  modalContainer: {
+    flex: 1,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  categoriesList: {
+    padding: 16,
   },
   categoryItem: {
     flexDirection: 'row',
@@ -726,121 +1149,25 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
+    marginBottom: 12,
   },
   categoryIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
     marginRight: 12,
+  },
+  categoryInfo: {
+    flex: 1,
   },
   categoryName: {
     fontSize: 16,
     fontWeight: '500',
-    flex: 1,
+    marginBottom: 2,
   },
-  separator: {
-    height: 8,
-  },
-  periodCard: {
-    marginBottom: 16,
-  },
-  periodGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  periodItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    minWidth: '48%',
-    gap: 8,
-  },
-  periodName: {
-    fontSize: 14,
-    fontWeight: '500',
-    flex: 1,
-  },
-  dateCard: {
-    marginBottom: 16,
-  },
-  dateRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  dateInput: {
-    flex: 1,
-  },
-  settingsCard: {
-    marginBottom: 16,
-  },
-  colorSection: {
-    marginTop: 16,
-  },
-  colorLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 12,
-  },
-  colorsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  colorItem: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  previewCard: {
-    marginBottom: 16,
-  },
-  previewContent: {
-    gap: 12,
-  },
-  previewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  previewColor: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-  },
-  previewName: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  previewAmounts: {
-    alignItems: 'center',
-  },
-  previewAmount: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  previewPeriod: {
-    fontSize: 14,
-  },
-  actionsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
-  },
-  cancelButton: {
-    flex: 1,
-  },
-  saveButton: {
-    flex: 2,
-  },
-  bottomSpacer: {
-    height: 24,
+  categoryType: {
+    fontSize: 12,
   },
 });

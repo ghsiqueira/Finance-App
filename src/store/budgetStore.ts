@@ -1,3 +1,5 @@
+// src/store/budgetStore.ts - CORRIGIDO
+
 import { create } from 'zustand';
 import { Budget } from '../types';
 
@@ -72,6 +74,11 @@ interface BudgetStore {
   
   reset: () => void;
 }
+
+// Função auxiliar para verificar se orçamento excedeu
+const isBudgetExceeded = (budget: Budget): boolean => {
+  return budget.spent > budget.amount || budget.status === 'exceeded';
+};
 
 export const useBudgetStore = create<BudgetStore>((set, get) => ({
   budgets: [],
@@ -191,13 +198,14 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
     }
 
     if (filters.isExceeded) {
-      filtered = filtered.filter(b => b.isExceeded);
+      // ✅ CORRIGIDO: Usar função auxiliar ao invés de propriedade
+      filtered = filtered.filter(b => isBudgetExceeded(b));
     }
 
     if (filters.nearLimit) {
       filtered = filtered.filter(b => {
         const threshold = b.alertThreshold || 80;
-        return b.spentPercentage >= threshold && !b.isExceeded;
+        return b.spentPercentage >= threshold && !isBudgetExceeded(b);
       });
     }
 
@@ -225,10 +233,11 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
     const totalRemaining = totalBudget - totalSpent;
     const overallPercentage = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
     
-    const budgetsExceeded = activeBudgets.filter(b => b.isExceeded).length;
+    // ✅ CORRIGIDO: Usar função auxiliar
+    const budgetsExceeded = activeBudgets.filter(b => isBudgetExceeded(b)).length;
     const budgetsNearLimit = activeBudgets.filter(b => {
       const threshold = b.alertThreshold || 80;
-      return b.spentPercentage >= threshold && !b.isExceeded;
+      return b.spentPercentage >= threshold && !isBudgetExceeded(b);
     }).length;
 
     const summary: BudgetSummary = {
@@ -250,14 +259,19 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
       if (b._id === budgetId) {
         const spentPercentage = b.amount > 0 ? Math.round((spent / b.amount) * 100) : 0;
         const remaining = Math.max(0, b.amount - spent);
-        const isExceeded = spent > b.amount;
+        
+        // Atualizar status baseado na porcentagem
+        let status: 'safe' | 'warning' | 'critical' | 'exceeded' = 'safe';
+        if (spentPercentage >= 100) status = 'exceeded';
+        else if (spentPercentage >= (b.alertThreshold || 80)) status = 'critical';
+        else if (spentPercentage >= (b.alertThreshold || 80) * 0.8) status = 'warning';
         
         return {
           ...b,
           spent,
           spentPercentage,
           remaining,
-          isExceeded,
+          status,
         };
       }
       return b;
@@ -281,7 +295,8 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
       
       if (!isActive) return;
 
-      if (budget.isExceeded) {
+      // ✅ CORRIGIDO: Usar função auxiliar
+      if (isBudgetExceeded(budget)) {
         alerts.push({
           budgetId: budget._id,
           budgetName: budget.name,
@@ -352,13 +367,14 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
 
   getExceededBudgets: () => {
     const { filteredBudgets } = get();
-    return filteredBudgets.filter(b => b.isExceeded);
+    // ✅ CORRIGIDO: Usar função auxiliar
+    return filteredBudgets.filter(b => isBudgetExceeded(b));
   },
 
   getBudgetsNearLimit: (threshold = 80) => {
     const { filteredBudgets } = get();
     return filteredBudgets.filter(b => 
-      b.spentPercentage >= threshold && !b.isExceeded
+      b.spentPercentage >= threshold && !isBudgetExceeded(b)
     );
   },
 
@@ -375,7 +391,7 @@ export const useBudgetStore = create<BudgetStore>((set, get) => ({
     return {
       percentage: budget.spentPercentage,
       remaining: budget.remaining,
-      isExceeded: budget.isExceeded,
+      isExceeded: isBudgetExceeded(budget), // ✅ CORRIGIDO
       daysRemaining,
     };
   },

@@ -1,140 +1,152 @@
-// src/components/common/Header.tsx - Versão corrigida
+// src/components/common/Header.tsx - Versão corrigida com props necessárias
 
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, StatusBar } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '../../store/themeStore';
 import { getTheme } from '../../styles/theme';
 
 interface HeaderProps {
   title: string;
-  leftIcon?: keyof typeof Ionicons.glyphMap;
-  onLeftPress?: () => void;
-  rightIcon?: keyof typeof Ionicons.glyphMap;
-  onRightPress?: () => void;
-  rightComponent?: React.ReactNode;
+  subtitle?: string;
+  leftElement?: React.ReactNode;
+  rightElement?: React.ReactNode;
+  onBackPress?: () => void;
   showBackButton?: boolean;
   backgroundColor?: string;
-  textColor?: string;
+  titleColor?: string;
+  style?: any;
 }
 
 export default function Header({
   title,
-  leftIcon = 'arrow-back',
-  onLeftPress,
-  rightIcon,
-  onRightPress,
-  rightComponent,
+  subtitle,
+  leftElement,
+  rightElement,
+  onBackPress,
   showBackButton = true,
   backgroundColor,
-  textColor,
+  titleColor,
+  style,
 }: HeaderProps) {
   const { theme } = useThemeStore();
   const themeConfig = getTheme(theme);
 
+  const headerBackgroundColor = backgroundColor || themeConfig.colors.background;
+  const headerTitleColor = titleColor || themeConfig.colors.text;
+
   return (
-    <View style={[
-      styles.container,
-      {
-        backgroundColor: backgroundColor || themeConfig.colors.card,
-        borderBottomColor: themeConfig.colors.border,
-      }
-    ]}>
+    <>
       <StatusBar
         barStyle={theme === 'dark' ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundColor || themeConfig.colors.card}
+        backgroundColor={headerBackgroundColor}
       />
-      
-      {/* Left Side */}
-      <View style={styles.leftContainer}>
-        {showBackButton && onLeftPress && (
-          <TouchableOpacity
-            style={styles.iconButton}
-            onPress={onLeftPress}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons
-              name={leftIcon}
-              size={24}
-              color={textColor || themeConfig.colors.text}
-            />
-          </TouchableOpacity>
-        )}
-      </View>
+      <SafeAreaView 
+        style={[
+          styles.container, 
+          { backgroundColor: headerBackgroundColor },
+          style
+        ]}
+        edges={['top']}
+      >
+        <View style={styles.header}>
+          {/* Left Side */}
+          <View style={styles.leftContainer}>
+            {leftElement ? (
+              leftElement
+            ) : showBackButton && onBackPress ? (
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={onBackPress}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons 
+                  name="arrow-back" 
+                  size={24} 
+                  color={headerTitleColor} 
+                />
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.placeholder} />
+            )}
+          </View>
 
-      {/* Title */}
-      <View style={styles.titleContainer}>
-        <Text
-          style={[
-            styles.title,
-            { color: textColor || themeConfig.colors.text }
-          ]}
-          numberOfLines={1}
-        >
-          {title}
-        </Text>
-      </View>
+          {/* Center */}
+          <View style={styles.centerContainer}>
+            <Text 
+              style={[
+                styles.title, 
+                { color: headerTitleColor }
+              ]}
+              numberOfLines={1}
+            >
+              {title}
+            </Text>
+            {subtitle && (
+              <Text 
+                style={[
+                  styles.subtitle, 
+                  { color: themeConfig.colors.textSecondary }
+                ]}
+                numberOfLines={1}
+              >
+                {subtitle}
+              </Text>
+            )}
+          </View>
 
-      {/* Right Side */}
-      <View style={styles.rightContainer}>
-        {rightComponent ? (
-          rightComponent
-        ) : rightIcon && onRightPress ? (
-          <TouchableOpacity
-            style={styles.iconButton}
-            onPress={onRightPress}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons
-              name={rightIcon}
-              size={24}
-              color={textColor || themeConfig.colors.text}
-            />
-          </TouchableOpacity>
-        ) : null}
-      </View>
-    </View>
+          {/* Right Side */}
+          <View style={styles.rightContainer}>
+            {rightElement || <View style={styles.placeholder} />}
+          </View>
+        </View>
+      </SafeAreaView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
     minHeight: 56,
-    borderBottomWidth: 1,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
   },
   leftContainer: {
-    width: 40,
+    minWidth: 40,
     alignItems: 'flex-start',
   },
-  titleContainer: {
+  centerContainer: {
     flex: 1,
     alignItems: 'center',
-    marginHorizontal: 16,
+    paddingHorizontal: 16,
   },
   rightContainer: {
-    width: 80,
+    minWidth: 40,
     alignItems: 'flex-end',
   },
-  iconButton: {
-    padding: 8,
-    borderRadius: 20,
+  backButton: {
+    padding: 4,
+  },
+  placeholder: {
+    width: 24,
+    height: 24,
   },
   title: {
     fontSize: 18,
     fontWeight: '600',
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 14,
+    marginTop: 2,
     textAlign: 'center',
   },
 });

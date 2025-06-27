@@ -1,4 +1,4 @@
-// src/types/index.ts - Tipos Completos e Atualizados
+// src/types/index.ts - Versão Corrigida
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { CompositeScreenProps } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -23,7 +23,7 @@ export type MainTabParamList = {
   Profile: undefined;
 };
 
-// 🔥 CORRIGIDO: MainStackParamList completo com initialData
+// 🔥 CORRIGIDO: MainStackParamList com tipos corretos
 export type MainStackParamList = {
   MainTabs: { screen?: keyof MainTabParamList }; 
   
@@ -37,12 +37,12 @@ export type MainStackParamList = {
       notes?: string;
       paymentMethod: string;
     };
-  };
+  } | undefined;
   EditTransaction: { transactionId: string };
   TransactionDetail: { transactionId: string };
   
-  // Orçamentos
-  AddBudget: undefined;
+  // Orçamentos - CORRIGIDO: Aceita categoryId como parâmetro opcional
+  AddBudget: { categoryId?: string } | undefined;
   EditBudget: { budgetId: string };
   BudgetDetail: { budgetId: string };
   
@@ -90,6 +90,15 @@ export interface TransactionFormData {
   recurringInterval?: string | null;
   recurringEndDate?: Date | null;
   recurringOccurrences?: string | null;
+}
+
+export interface BudgetForm {
+  name: string;
+  amount: string;
+  categoryId: string;
+  period: 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+  alertThreshold: number;
+  notes?: string;
 }
 
 export interface BudgetFormData {
@@ -184,23 +193,27 @@ export interface Budget {
   _id: string;
   name: string;
   amount: number;
+  spent: number;
   categoryId: string;
   category?: Category;
   userId: string;
   period: 'weekly' | 'monthly' | 'quarterly' | 'yearly';
   startDate: string;
   endDate: string;
-  spent: number;
   alertThreshold: number;
   alertSent: boolean;
   isActive: boolean;
   autoRenew: boolean;
   notes?: string;
   color: string;
-  spentPercentage?: number;
-  remainingAmount?: number;
-  isExceeded?: boolean;
-  isNearLimit?: boolean;
+  
+  // Propriedades calculadas
+  spentPercentage: number;
+  remaining: number;
+  status: 'safe' | 'warning' | 'critical' | 'exceeded';
+  daysRemaining: number;
+  dailyBudget: number;
+  
   createdAt: string;
   updatedAt: string;
 }
